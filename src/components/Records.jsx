@@ -2,8 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { ABILITIES, labelOf } from '../schema.js';
 
 const yn = (v) => (v === true ? '✅' : v === false ? '❌' : '—');
-const avg = (arr) => (arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null);
-const fmt = (n, d = 1) => (n == null ? '—' : n.toFixed(d).replace(/\.0$/, ''));
 
 function AllianceDot({ alliance }) {
   if (!alliance) return null;
@@ -56,10 +54,11 @@ export function RecordList({ records, onEdit, onDelete, filter, setFilter }) {
               <AllianceDot alliance={r.match.alliance} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-lg font-bold">
+                  <span title={r._pending ? 'Senkronizasyon bekliyor' : 'Depoya kaydedildi'}>{r._pending ? '⏳' : '☁️'}</span>{' '}
                   #{r.match.teamNumber} {r.match.teamName && <span className="font-medium text-muted">· {r.match.teamName}</span>}
                 </div>
                 <div className="text-sm text-muted">
-                  Maç {r.match.matchNumber} · Tip {r.auto.tipCount}+{r.teleop.tipCount} · %{r.teleop.accuracy} isabet
+                  Maç {r.match.matchNumber}{r.scouter ? ` · ${r.scouter}` : ''} · Tip {r.auto.tipCount}+{r.teleop.tipCount} · %{r.teleop.accuracy} isabet
                   {r.teleop.driverRating ? ` · ${'★'.repeat(r.teleop.driverRating)}` : ''}
                 </div>
               </div>
@@ -119,102 +118,6 @@ export function RecordList({ records, onEdit, onDelete, filter, setFilter }) {
           </article>
         );
       })}
-    </div>
-  );
-}
-
-/* ================= TAKIM ÖZETİ (strateji / alliance seçimi) ================= */
-export function TeamSummary({ records, onPickTeam }) {
-  const [sortKey, setSortKey] = useState('tips');
-
-  const teams = useMemo(() => {
-    const map = new Map();
-    for (const r of records) {
-      const k = String(r.match.teamNumber);
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(r);
-    }
-    return [...map.entries()].map(([num, rs]) => {
-      const latest = [...rs].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
-      const flowerTried = rs.filter((r) => r.endgame.flowerResult === 'done' || r.endgame.flowerResult === 'failed');
-      const ratings = rs.map((r) => r.teleop.driverRating).filter(Boolean);
-      return {
-        num,
-        name: rs.find((r) => r.match.teamName)?.match.teamName || '',
-        matches: rs.length,
-        autoTip: avg(rs.map((r) => (r.auto.hasAuto ? r.auto.tipCount : 0))),
-        teleTip: avg(rs.map((r) => r.teleop.tipCount)),
-        tips: avg(rs.map((r) => (r.auto.hasAuto ? r.auto.tipCount : 0) + r.teleop.tipCount)),
-        accuracy: avg(rs.map((r) => r.teleop.accuracy)),
-        driver: avg(ratings),
-        autoRate: rs.filter((r) => r.auto.hasAuto).length / rs.length,
-        flowerRate: flowerTried.length
-          ? flowerTried.filter((r) => r.endgame.flowerResult === 'done').length / flowerTried.length
-          : null,
-        drivetrain: latest.robot.drivetrain === 'other' ? latest.robot.drivetrainOther || 'Diğer' : labelOf('drivetrain', latest.robot.drivetrain),
-        abilities: ABILITIES.filter((a) => rs.some((r) => r.robot.abilities[a.key] === true)).map((a) => a.key),
-      };
-    });
-  }, [records]);
-
-  const sorted = [...teams].sort((a, b) => (b[sortKey] ?? -1) - (a[sortKey] ?? -1));
-  const SORTS = [
-    ['tips', 'Toplam Tip'],
-    ['accuracy', 'İsabet'],
-    ['driver', 'Sürücü'],
-    ['flowerRate', 'Flower'],
-  ];
-  const ABBR = { hive: 'Hive', flower: 'Flower', nectar: 'Nektar', pollen: 'Polen', stealFlower: 'Çalma' };
-
-  if (!teams.length)
-    return <div className="card text-center text-muted">Özet için önce birkaç maç kaydedin.</div>;
-
-  return (
-    <div className="grid gap-3">
-      <div className="grid grid-cols-4 gap-2">
-        {SORTS.map(([k, l]) => (
-          <button
-            key={k}
-            className={`btn min-h-[44px] border-2 px-1 text-sm ${sortKey === k ? 'border-accent bg-accent text-accent-fg' : 'border-line bg-raised'}`}
-            onClick={() => setSortKey(k)}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-      {sorted.map((t, i) => (
-        <button key={t.num} type="button" className="card text-left" onClick={() => onPickTeam(t.num)}>
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-muted">{i + 1}.</span>
-            <span className="text-xl font-extrabold">#{t.num}</span>
-            <span className="truncate text-muted">{t.name}</span>
-            <span className="ml-auto text-xs text-muted">{t.matches} maç</span>
-          </div>
-          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-            {[
-              ['Oto Tip', fmt(t.autoTip)],
-              ['Tele Tip', fmt(t.teleTip)],
-              ['İsabet', t.accuracy == null ? '—' : `%${fmt(t.accuracy, 0)}`],
-              ['Sürücü', t.driver == null ? '—' : `${fmt(t.driver)}★`],
-            ].map(([l, v]) => (
-              <div key={l} className="rounded-lg bg-raised py-2">
-                <div className="text-lg font-bold tabular-nums">{v}</div>
-                <div className="text-[11px] text-muted">{l}</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1 text-xs">
-            {t.drivetrain && <span className="rounded-full border border-line px-2 py-0.5">{t.drivetrain}</span>}
-            <span className="rounded-full border border-line px-2 py-0.5">Otonom %{fmt(t.autoRate * 100, 0)}</span>
-            {t.flowerRate != null && (
-              <span className="rounded-full border border-line px-2 py-0.5">EG Flower %{fmt(t.flowerRate * 100, 0)}</span>
-            )}
-            {t.abilities.map((k) => (
-              <span key={k} className="rounded-full bg-accent/20 px-2 py-0.5 text-fg">{ABBR[k]}</span>
-            ))}
-          </div>
-        </button>
-      ))}
     </div>
   );
 }

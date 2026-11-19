@@ -3,6 +3,8 @@ name: GitHub Pages'e Deploy
 on:
   push:
     branches: [main, claude/ftc-biobuzz-scouting-app-8ubtb9]
+    # Gözlemcilerin veri kayıtları (scouting_data.json) her seferinde siteyi yeniden derlemesin
+    paths-ignore: [scouting_data.json]
   workflow_dispatch:
 
 permissions:

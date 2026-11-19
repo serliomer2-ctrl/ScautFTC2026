@@ -1,35 +1,56 @@
-# 🐝 Biobuzz Scout — FTC 2026 Scouting Uygulaması
+# 🐝 Biobuzz Scout — FTC 2026 Scouting & Strateji
 
-Maç sırasında ve pit alanında hızlı veri girişi için mobil uyumlu, tek sayfalık (SPA) scouting uygulaması.
-React 18 + Vite + Tailwind CSS. Sunucu gerektirmez; tüm veri tarayıcının LocalStorage'ında tutulur.
+Çok kullanıcılı, takım odalı scouting uygulaması. Veritabanı olarak bu depodaki **`scouting_data.json`**
+dosyası kullanılır (GitHub Contents API). React 18 + Vite + Tailwind CSS, GitHub Pages'te çalışır.
 
-## Çalıştırma
-
+## Kurulum
 ```bash
 npm install
-npm run dev        # http://localhost:5173 (aynı ağdaki telefondan IP ile açılabilir)
-npm run build      # dist/ klasörü – herhangi bir statik sunucuya / GitHub Pages'e yüklenebilir
+npm run dev      # http://localhost:5173
+npm run build    # dist/  (GitHub Actions bunu otomatik Pages'e yükler)
 ```
+**Yazma anahtarı:** GitHub → Settings → Developer settings → *Fine-grained tokens* → yalnızca bu depo,
+*Repository permissions → Contents: Read and write*. Uygulamada **⚙️ Senkronizasyon Ayarları**'na yapıştırın
+(anahtar sadece o cihazın tarayıcısında saklanır). Anahtar olmadan veri okunur, kayıtlar cihazda kuyrukta bekler.
 
-## Özellikler
-- **3 tema:** Koyu, Açık, ⚡ Saha (saf siyah + yüksek kontrast, büyük yazı)
-- Büyük dokunmatik butonlar, −/+ sayaçlar, yıldız puanı, isabet slider'ı
-- Otonom "Hayır" → otonom detayları gizlenir; Asistan "Evet" → açıklama kutusu açılır
-- Yarım kalan form otomatik taslak olarak saklanır (sayfa yenilense de kaybolmaz)
-- Aynı takım + maç tekrar girilirse üzerine yazma onayı
-- **Kayıtlar:** arama, detay, düzenle, sil · **CSV** (Excel uyumlu, UTF-8 BOM) / **JSON** dışa aktarma · JSON içe aktarma (birden çok gözlemcinin verisini id'ye göre birleştirir)
-- **Takımlar:** takım bazlı ortalamalar (oto/tele Tip, isabet, sürücü puanı, End Game Flower başarı oranı), sıralama — alliance seçimi için
-
-## Veri mimarisi
-Bir kayıt = bir takımın bir maçtaki gözlemi (`src/schema.js`):
-
+## `scouting_data.json` şeması (v2)
+```jsonc
+{
+  "schemaVersion": 2, "app": "ftc-biobuzz-2026", "updatedAt": "ISO tarih",
+  "rooms": {
+    "pub:istanbul-regional": { "id", "name", "type": "public", "createdAt", "createdBy" },
+    "prv:takim-23456": { "id", "name", "type": "private", "createdAt", "createdBy",
+                          "kdf": { "alg": "PBKDF2-SHA256", "iterations": 210000, "salt" },
+                          "verifier": { "iv", "ct" } }
+  },
+  "records": {
+    "pub:istanbul-regional": [ ScoutRecord, ... ],                  // açık metin
+    "prv:takim-23456":       [ { "id", "updatedAt", "enc": { "iv", "ct" } } ]  // AES-256-GCM
+  }
+}
 ```
-ScoutRecord { id, schemaVersion, createdAt, updatedAt, scouter,
-  match:   { teamNumber, teamName, matchNumber, alliance: 'red'|'blue', notes },
-  robot:   { drivetrain, drivetrainOther, intake, abilities: { hive, flower, nectar, pollen, stealFlower } },
-  auto:    { hasAuto, success, performance, odometry, vision, startPosition, routeCount, pickupSource, tipCount, soloTip },
-  teleop:  { autoAim, driverAssist, assistDescription, driverRating(0-5), carryCapacity, tipCount, accuracy(0-100) },
-  endgame: { flowerPlanned, flowerResult: 'done'|'failed'|'not_attempted' } }
-```
-Evet/Hayır alanları `null | true | false` (null = işaretlenmedi). LocalStorage anahtarları:
-`biobuzz.records.v1`, `biobuzz.draft.v1`, `biobuzz.prefs.v1`.
+`ScoutRecord` = `{ id, roomId, scouter, createdAt, updatedAt, match, robot, auto, teleop, endgame }`
+(alanlar: `src/schema.js`). Silinen kayıt `{ id, updatedAt, deleted: true }` olarak kalır (tombstone).
+
+## Nasıl çalışır
+- **Çakışma önleme:** Her yazmadan önce dosya + `sha` taze çekilir, kuyruktaki işlemler id bazında birleştirilir
+  (yeni `updatedAt` kazanır) ve `sha` ile yazılır. Arada başkası yazdıysa GitHub 409 döner → yeniden çek-birleştir-yaz
+  (rastgele beklemeyle 6 deneme). Kimse kimsenin kaydını ezmez.
+- **Offline kuyruk:** Her kayıt önce LocalStorage kuyruğuna girer (⏳). Bağlantı gelince, 45 sn'de bir,
+  uygulamaya dönünce veya **🔄 Senkronize Et** ile gönderilir (☁️).
+- **Odalar:** Ortak oda şifresizdir (offline da açılabilir). Özel oda, şifreden türetilen anahtarla **şifrelenir**;
+  şifre hiçbir yerde saklanmaz, depo herkese açık olsa bile kayıtlar okunamaz. Özel oda oluşturmak çevrimiçi olmayı gerektirir.
+  ⚠️ Şifre unutulursa veri kurtarılamaz.
+- **Analiz:** Takımlar (detay kartı + maç grafiği + pit/not özeti), İttifak (4 takıma kadar karşılaştırma + partner uyum puanı),
+  Simülatör (2v2 tahmini skor ve kazanma ihtimali). Puan değerleri Simülatör → *Puan Modeli*'nden kural kitabına göre ayarlanır.
+- Veri kayıtları Pages'i yeniden derletmez (`paths-ignore: scouting_data.json`).
+
+## Dosyalar
+| | |
+|---|---|
+| `src/lib/github.js` | Contents API okuma/yazma, UTF-8 base64, 1 MB+ dosya desteği |
+| `src/lib/store.js` | Cache, offline kuyruk, `syncNow()` (sha + 409 tekrar deneme) |
+| `src/lib/rooms.js` | Oda oluştur/gir, kayıt şifreleme/çözme |
+| `src/lib/crypto.js` | PBKDF2 + AES-GCM (WebCrypto) |
+| `src/lib/analytics.js` | Takım istatistikleri, maç tahmini, partner sıralaması |
+| `src/components/` | Login, ScoutForm, Records, TeamsView, StrategyViews, Charts, ui |

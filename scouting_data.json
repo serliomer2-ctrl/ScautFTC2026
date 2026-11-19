@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "app": "ftc-biobuzz-2026",
+  "updatedAt": "2026-11-19T00:00:00.000Z",
+  "rooms": {
+    "pub:biobuzz-genel": {
+      "id": "pub:biobuzz-genel",
+      "name": "Biobuzz Genel",
+      "type": "public",
+      "createdAt": "2026-11-19T00:00:00.000Z",
+      "createdBy": "sistem"
+    }
+  },
+  "records": {
+    "pub:biobuzz-genel": []
+  }
+}
