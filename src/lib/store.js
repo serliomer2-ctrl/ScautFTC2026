@@ -10,7 +10,7 @@
  * Birleştirme id bazlıdır ve updatedAt'i yeni olan kazanır; böylece kimse kimsenin kaydını ezmez
  * ve aynı işlem iki kez gönderilse de sonuç değişmez (idempotent).
  */
-import { DEFAULT_REPO } from '../config.js';
+import { DEFAULT_REPO, PROXY_URL } from '../config.js';
 import { getFile, GitHubError, putFile } from './github.js';
 
 const K = {
@@ -83,6 +83,42 @@ export function applyOps(db, ops) {
   return next;
 }
 
+/* ---------- Worker (ara sunucu) modu ---------- */
+const useProxy = () => !!PROXY_URL && !read(K.token, '');
+
+async function proxyCall(path, body) {
+  let res;
+  try {
+    res = await fetch(PROXY_URL + path, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : { cache: 'no-store' });
+  } catch {
+    throw new Error('Sunucuya ulaşılamadı – kayıtlar cihazda bekliyor');
+  }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || `Sunucu hatası (${res.status})`);
+  return j;
+}
+
+async function proxySync() {
+  const ops = loadQueue();
+  let db;
+  if (!ops.length) db = normalize((await proxyCall('/data')).data);
+  else {
+    // Worker birleştirme + sha/409 tekrarını sunucuda yapar; 100'lük paketler halinde gönder
+    for (let i = 0; i < ops.length; i += 100) {
+      const chunk = ops.slice(i, i + 100);
+      db = normalize((await proxyCall('/sync', { ops: chunk.map(({ type, room, roomId, item }) => ({ type, room, roomId, item })) })).data);
+      const sent = new Set(chunk.map((o) => o.opId));
+      write(K.queue, loadQueue().filter((o) => !sent.has(o.opId)));
+    }
+  }
+  write(K.cache, db);
+  write(K.lastSync, new Date().toISOString());
+  emit();
+  return { pushed: ops.length };
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let running = null;
 
@@ -96,6 +132,7 @@ export function syncNow() {
 }
 
 async function doSync() {
+  if (useProxy()) return proxySync();
   const cfg = { ...loadRepo(), token: loadToken() };
   for (let attempt = 1; attempt <= 6; attempt++) {
     const ops = loadQueue();
@@ -134,6 +171,12 @@ async function doSync() {
 
 /** Sadece okuma (kuyruğu göndermeden) – giriş ekranında oda listesini almak için */
 export async function pullOnly() {
+  if (useProxy()) {
+    const db = normalize((await proxyCall('/data')).data);
+    write(K.cache, db);
+    emit();
+    return db;
+  }
   const cfg = { ...loadRepo(), token: loadToken() };
   const { data } = await getFile(cfg);
   const db = normalize(data);

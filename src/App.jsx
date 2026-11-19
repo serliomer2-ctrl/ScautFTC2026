@@ -5,7 +5,7 @@ import { RecordList } from './components/Records.jsx';
 import TeamsView from './components/TeamsView.jsx';
 import { AllianceView, PredictorView } from './components/StrategyViews.jsx';
 import { Toast } from './components/ui.jsx';
-import { DEFAULT_SCORING, SYNC_INTERVAL_MS } from './config.js';
+import { DEFAULT_SCORING, PROXY_URL, SHOW_SYNC_SETTINGS, SYNC_INTERVAL_MS } from './config.js';
 import { emptyRecord, validate } from './schema.js';
 import { teamStats } from './lib/analytics.js';
 import { encodeRecord, roomRecords } from './lib/rooms.js';
@@ -234,7 +234,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   const cycleTheme = () =>
     setPrefs((p) => ({ ...p, theme: THEMES[(THEMES.findIndex((t) => t.id === p.theme) + 1) % THEMES.length].id }));
   const exportRows = records.map(({ _pending, ...r }) => r);
-  const hasToken = !!loadToken();
+  const hasToken = !!PROXY_URL || !!loadToken();
 
   const statusColor = !sync.online ? 'bg-bad' : sync.error ? 'bg-bad' : queueLen ? 'bg-accent' : 'bg-ok';
   const statusText = !sync.online
@@ -266,7 +266,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
           <button className="btn-ghost min-h-[44px] px-3 text-sm" onClick={onLeave} title="Odadan çık">Çık</button>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <button className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs" onClick={() => setShowSettings((v) => !v)}>
+          <button className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs" onClick={() => SHOW_SYNC_SETTINGS && setShowSettings((v) => !v)}>
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusColor}`} />
             <span className="truncate text-muted">{statusText}</span>
           </button>
@@ -277,7 +277,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         {sync.error && <p className="mt-1 text-xs text-bad">{sync.error}</p>}
       </header>
 
-      {showSettings && (
+      {SHOW_SYNC_SETTINGS && showSettings && (
         <div className="mt-3">
           <SyncSettings open setOpen={setShowSettings} onSaved={() => runSync(true)} />
         </div>

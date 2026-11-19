@@ -9,9 +9,10 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # dist/  (GitHub Actions bunu otomatik Pages'e yükler)
 ```
-**Yazma anahtarı:** GitHub → Settings → Developer settings → *Fine-grained tokens* → yalnızca bu depo,
-*Repository permissions → Contents: Read and write*. Uygulamada **⚙️ Senkronizasyon Ayarları**'na yapıştırın
-(anahtar sadece o cihazın tarayıcısında saklanır). Anahtar olmadan veri okunur, kayıtlar cihazda kuyrukta bekler.
+**Senkronizasyon:** Veri, Cloudflare Worker ara sunucusu (`worker/worker.js`) üzerinden ayrı, gizli
+`ScautFTC2026-data` deposuna yazılır. GitHub anahtarı yalnızca Worker'da saklanır; uygulamada anahtar yoktur ve
+gözlemciler hiçbir ayar yapmaz. Kurulum: **[worker/KURULUM.md](worker/KURULUM.md)**. Worker adresi `src/config.js →
+PROXY_URL`'e yazılır. (Worker yoksa ya da adres `?admin` ile açılırsa, eski "cihaza anahtar gir" modu kullanılabilir.)
 
 ## `scouting_data.json` şeması (v2)
 ```jsonc
@@ -33,7 +34,7 @@ npm run build    # dist/  (GitHub Actions bunu otomatik Pages'e yükler)
 (alanlar: `src/schema.js`). Silinen kayıt `{ id, updatedAt, deleted: true }` olarak kalır (tombstone).
 
 ## Nasıl çalışır
-- **Çakışma önleme:** Her yazmadan önce dosya + `sha` taze çekilir, kuyruktaki işlemler id bazında birleştirilir
+- **Çakışma önleme:** (Worker'da, sunucu tarafında) Her yazmadan önce dosya + `sha` taze çekilir, kuyruktaki işlemler id bazında birleştirilir
   (yeni `updatedAt` kazanır) ve `sha` ile yazılır. Arada başkası yazdıysa GitHub 409 döner → yeniden çek-birleştir-yaz
   (rastgele beklemeyle 6 deneme). Kimse kimsenin kaydını ezmez.
 - **Offline kuyruk:** Her kayıt önce LocalStorage kuyruğuna girer (⏳). Bağlantı gelince, 45 sn'de bir,
@@ -48,6 +49,7 @@ npm run build    # dist/  (GitHub Actions bunu otomatik Pages'e yükler)
 ## Dosyalar
 | | |
 |---|---|
+| `worker/worker.js` | Cloudflare Worker: doğrulama, sunucu tarafı birleştirme, sha/409 tekrar deneme |
 | `src/lib/github.js` | Contents API okuma/yazma, UTF-8 base64, 1 MB+ dosya desteği |
 | `src/lib/store.js` | Cache, offline kuyruk, `syncNow()` (sha + 409 tekrar deneme) |
 | `src/lib/rooms.js` | Oda oluştur/gir, kayıt şifreleme/çözme |

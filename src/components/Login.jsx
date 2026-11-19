@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPrivate, joinPrivate, joinPublic, knownRooms } from '../lib/rooms.js';
 import { loadRepo, loadToken, pullOnly, saveRepo, saveToken, testConnection } from '../lib/store.js';
 import { Field, Segmented } from './ui.jsx';
+import { SHOW_SYNC_SETTINGS } from '../config.js';
 
 export default function Login({ onEnter, defaultScouter = '' }) {
   const [scouter, setScouter] = useState(defaultScouter);
@@ -12,7 +13,7 @@ export default function Login({ onEnter, defaultScouter = '' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [rooms, setRooms] = useState(knownRooms);
-  const [showSettings, setShowSettings] = useState(!loadToken());
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     pullOnly().then(() => setRooms(knownRooms())).catch(() => {});
@@ -105,7 +106,7 @@ export default function Login({ onEnter, defaultScouter = '' }) {
         </button>
       </form>
 
-      <SyncSettings open={showSettings} setOpen={setShowSettings} onSaved={() => pullOnly().then(() => setRooms(knownRooms())).catch(() => {})} />
+      {SHOW_SYNC_SETTINGS && <SyncSettings open={showSettings} setOpen={setShowSettings} onSaved={() => pullOnly().then(() => setRooms(knownRooms())).catch(() => {})} />}
     </div>
   );
 }
