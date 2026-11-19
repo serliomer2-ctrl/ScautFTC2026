@@ -84,7 +84,12 @@ export function applyOps(db, ops) {
 }
 
 /* ---------- Worker (ara sunucu) modu ---------- */
-const useProxy = () => !!PROXY_URL && !read(K.token, '');
+const IS_ADMIN = new URLSearchParams(location.search).has('admin');
+/** Worker tanımlıysa her zaman onu kullan; cihaza girilmiş anahtar sadece ?admin modunda geçerli */
+const useProxy = () => !!PROXY_URL && !(IS_ADMIN && read(K.token, ''));
+
+// Worker varken cihazlarda eski sürümden kalmış GitHub anahtarlarını temizle (güvenlik + yanlış mod)
+if (PROXY_URL && !IS_ADMIN) write(K.token, null);
 
 async function proxyCall(path, body) {
   let res;
