@@ -9,7 +9,12 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # dist/  (GitHub Actions bunu otomatik Pages'e yükler)
 ```
-**Senkronizasyon:** Veri, Cloudflare Worker ara sunucusu (`worker/worker.js`) üzerinden ayrı, gizli
+**Senkronizasyon (aktif: B seçeneği):** Anahtar `ScautFTC2026` deposunun **Settings → Secrets and variables → Actions**
+bölümünde `SCOUT_TOKEN` adıyla durur; GitHub Actions derlerken pakete gömer, uygulama doğrudan GitHub API ile
+`serliomer2-ctrl/ScautFTC2026-data` deposuna yazar. Anahtar yalnızca o depoya *Contents: Read and write* yetkili olmalı.
+⚠️ Siteyi açan biri anahtarı paketten çıkarabilir; şüphede GitHub'dan iptal edip yenisini Secret'a koyun.
+
+**Alternatif (A seçeneği):** Veri, Cloudflare Worker ara sunucusu (`worker/worker.js`) üzerinden ayrı, gizli
 `ScautFTC2026-data` deposuna yazılır. GitHub anahtarı yalnızca Worker'da saklanır; uygulamada anahtar yoktur ve
 gözlemciler hiçbir ayar yapmaz. Kurulum: **[worker/KURULUM.md](worker/KURULUM.md)**. Worker adresi `src/config.js →
 PROXY_URL`'e yazılır. (Worker yoksa ya da adres `?admin` ile açılırsa, eski "cihaza anahtar gir" modu kullanılabilir.)

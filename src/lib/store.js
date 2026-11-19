@@ -10,7 +10,7 @@
  * Birleştirme id bazlıdır ve updatedAt'i yeni olan kazanır; böylece kimse kimsenin kaydını ezmez
  * ve aynı işlem iki kez gönderilse de sonuç değişmez (idempotent).
  */
-import { DEFAULT_REPO, PROXY_URL } from '../config.js';
+import { BUILT_IN_TOKEN, DEFAULT_REPO, PROXY_URL } from '../config.js';
 import { getFile, GitHubError, putFile } from './github.js';
 
 const K = {
@@ -21,6 +21,8 @@ const K = {
   session: 'bb2.session',
   lastSync: 'bb2.lastSync',
 };
+
+const IS_ADMIN = new URLSearchParams(location.search).has('admin');
 
 const read = (k, fb) => {
   try {
@@ -47,7 +49,7 @@ export const loadCache = () => normalize(read(K.cache, null));
 export const loadQueue = () => read(K.queue, []);
 export const loadRepo = () => ({ ...DEFAULT_REPO, ...read(K.repo, {}) });
 export const saveRepo = (r) => write(K.repo, r);
-export const loadToken = () => read(K.token, '');
+export const loadToken = () => (IS_ADMIN && read(K.token, '')) || BUILT_IN_TOKEN || read(K.token, '');
 export const saveToken = (t) => write(K.token, t || null);
 export const loadSession = () => read(K.session, null);
 export const saveSession = (s) => write(K.session, s);
@@ -84,12 +86,11 @@ export function applyOps(db, ops) {
 }
 
 /* ---------- Worker (ara sunucu) modu ---------- */
-const IS_ADMIN = new URLSearchParams(location.search).has('admin');
-/** Worker tanımlıysa her zaman onu kullan; cihaza girilmiş anahtar sadece ?admin modunda geçerli */
-const useProxy = () => !!PROXY_URL && !(IS_ADMIN && read(K.token, ''));
+/** Öncelik: ?admin modunda cihaza girilen anahtar > gömülü anahtar (doğrudan GitHub) > Worker */
+const useProxy = () => !!PROXY_URL && !BUILT_IN_TOKEN && !(IS_ADMIN && read(K.token, ''));
 
-// Worker varken cihazlarda eski sürümden kalmış GitHub anahtarlarını temizle (güvenlik + yanlış mod)
-if (PROXY_URL && !IS_ADMIN) write(K.token, null);
+// Cihazlarda eski sürümden kalmış elle girilmiş anahtarları temizle (güvenlik + yanlış mod)
+if ((PROXY_URL || BUILT_IN_TOKEN) && !IS_ADMIN) write(K.token, null);
 
 async function proxyCall(path, body) {
   let res;

@@ -27,6 +27,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # B seçeneği: anahtar depo Secret'ından gelir, kodda yoktur
+          SCOUT_TOKEN: ${{ secrets.SCOUT_TOKEN }}
+          DATA_OWNER: ${{ vars.DATA_OWNER }}
+          DATA_REPO: ${{ vars.DATA_REPO }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

@@ -9,12 +9,23 @@ function detectRepo() {
   return m && repo ? { owner: m[1], repo } : null;
 }
 
+/* Derleme anında gömülen değerler (vite.config.js → define) */
+const DATA = typeof __DATA_REPO__ !== 'undefined' ? __DATA_REPO__ : {};
+const OBF = typeof __SCOUT_TOKEN__ !== 'undefined' ? __SCOUT_TOKEN__ : '';
+
+/** Gömülü senkronizasyon anahtarı (B seçeneği) – varsa gözlemciler hiçbir ayar yapmaz */
+export const BUILT_IN_TOKEN = OBF ? [...atob(OBF)].reverse().join('') : '';
+
 export const DEFAULT_REPO = {
   owner: 'serliomer2-ctrl',
   repo: 'ScautFTC2026',
-  branch: '',
   path: 'scouting_data.json',
   ...detectRepo(),
+  branch: '',
+  // Ayrı veri deposu (varsayılan: ScautFTC2026-data)
+  ...(DATA.owner && { owner: DATA.owner }),
+  ...(DATA.repo && { repo: DATA.repo }),
+  ...(DATA.branch && { branch: DATA.branch }),
 };
 
 /**
@@ -31,11 +42,13 @@ export const DEFAULT_SCORING = {
 export const SYNC_INTERVAL_MS = 45_000;
 
 /**
- * Cloudflare Worker adresi (worker/worker.js). Doluysa tüm okuma/yazma bu ara sunucudan geçer,
+ * Cloudflare Worker adresi (worker/worker.js, A seçeneği). Gömülü anahtar YOKSA kullanılır;
+ * doluysa tüm okuma/yazma bu ara sunucudan geçer,
  * gözlemciler hiçbir anahtar/ayar girmez. Adres gizli değildir; anahtar Worker'da saklanır.
  * Derlemede VITE_PROXY_URL ile de verilebilir.
  */
 export const PROXY_URL = (import.meta.env.VITE_PROXY_URL || 'https://biobuzz-sync.serli-omer2.workers.dev').replace(/\/$/, '');
 
 /** Gelişmiş ayarlar yalnızca Worker yoksa ya da adres ?admin ile açılırsa görünür */
-export const SHOW_SYNC_SETTINGS = !PROXY_URL || new URLSearchParams(location.search).has('admin');
+export const SHOW_SYNC_SETTINGS =
+  (!PROXY_URL && !BUILT_IN_TOKEN) || new URLSearchParams(location.search).has('admin');
