@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tema değişkenleri (RGB kanalları) */
+:root,
+[data-theme='dark'] {
+  --bg: 15 17 21;
+  --surface: 24 27 34;
+  --raised: 36 40 50;
+  --line: 52 58 72;
+  --fg: 236 239 244;
+  --muted: 150 158 175;
+  --accent: 250 204 21; /* arı sarısı */
+  --accent-fg: 20 20 20;
+  --ok: 34 197 94;
+  --bad: 239 68 68;
+  --alliance-red: 220 38 38;
+  --alliance-blue: 37 99 235;
+}
+[data-theme='light'] {
+  --bg: 244 245 248;
+  --surface: 255 255 255;
+  --raised: 236 238 243;
+  --line: 214 218 226;
+  --fg: 17 24 39;
+  --muted: 92 100 116;
+  --accent: 202 138 4;
+  --accent-fg: 255 255 255;
+  --ok: 22 163 74;
+  --bad: 220 38 38;
+  --alliance-red: 220 38 38;
+  --alliance-blue: 37 99 235;
+}
+/* Saha modu: güneş altında / parlak salon ışığında okunabilir, saf siyah + saf renkler */
+[data-theme='field'] {
+  --bg: 0 0 0;
+  --surface: 0 0 0;
+  --raised: 28 28 28;
+  --line: 255 255 255;
+  --fg: 255 255 255;
+  --muted: 220 220 220;
+  --accent: 255 230 0;
+  --accent-fg: 0 0 0;
+  --ok: 0 255 110;
+  --bad: 255 60 60;
+  --alliance-red: 255 40 40;
+  --alliance-blue: 40 130 255;
+}
+[data-theme='field'] body { font-size: 17px; }
+[data-theme='field'] .card { border-width: 2px; }
+
+html { color-scheme: dark; }
+html[data-theme='light'] { color-scheme: light; }
+body {
+  @apply bg-bg text-fg antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .card { @apply rounded-2xl border border-line bg-surface p-4 sm:p-5; }
+  .label { @apply mb-2 block text-sm font-semibold text-muted; }
+  .input {
+    @apply w-full min-h-[48px] rounded-xl border border-line bg-raised px-4 py-3 text-base text-fg
+      placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-accent;
+  }
+  .btn {
+    @apply inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl px-4 font-semibold
+      transition active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-primary { @apply btn bg-accent text-accent-fg; }
+  .btn-ghost { @apply btn border border-line bg-raised text-fg; }
+  .btn-danger { @apply btn border border-bad/60 bg-bad/10 text-bad; }
+}
+
+/* Kaydırma çubuğu (slider) – büyük başparmak */
+input[type='range'] { accent-color: rgb(var(--accent)); height: 2.25rem; }
