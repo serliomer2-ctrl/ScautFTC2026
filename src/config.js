@@ -35,7 +35,7 @@ export const SYNC_INTERVAL_MS = 45_000;
  * gözlemciler hiçbir anahtar/ayar girmez. Adres gizli değildir; anahtar Worker'da saklanır.
  * Derlemede VITE_PROXY_URL ile de verilebilir.
  */
-export const PROXY_URL = (import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '');
+export const PROXY_URL = (import.meta.env.VITE_PROXY_URL || 'https://biobuzz-sync.serli-omer2.workers.dev').replace(/\/$/, '');
 
 /** Gelişmiş ayarlar yalnızca Worker yoksa ya da adres ?admin ile açılırsa görünür */
 export const SHOW_SYNC_SETTINGS = !PROXY_URL || new URLSearchParams(location.search).has('admin');
