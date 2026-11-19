@@ -29,10 +29,14 @@ const ROOM_ID = /^(pub|prv):[a-z0-9-]{1,48}$/;
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
-    const allowed = (env.ALLOWED_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
-    const originOk = !allowed.length || allowed.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    // Sondaki "/" ve büyük/küçük harf farkı hata sebebi olmasın
+    const clean = (o) => o.trim().replace(/\/+$/, '').toLowerCase();
+    const allowed = (env.ALLOWED_ORIGIN || '').split(',').map(clean).filter(Boolean);
+    const originOk = !allowed.length || allowed.includes(clean(origin)) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    // Hata mesajı da tarayıcıda okunabilsin diye CORS başlığı her zaman gelen origin'i yansıtır;
+    // izin kontrolü aşağıda 403 ile yapılır.
     const cors = {
-      'Access-Control-Allow-Origin': originOk && origin ? origin : allowed[0] || '*',
+      'Access-Control-Allow-Origin': origin || '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400',
@@ -42,11 +46,12 @@ export default {
       new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (origin && !originOk) return json({ error: 'Bu siteden erişime izin yok' }, 403);
-    if (!env.GITHUB_TOKEN || !env.DATA_OWNER || !env.DATA_REPO) return json({ error: 'Worker ayarları eksik (GITHUB_TOKEN / DATA_OWNER / DATA_REPO)' }, 500);
-
+    if (origin && !originOk) return json({ error: `Bu siteden erişime izin yok (${origin}). Cloudflare'de ALLOWED_ORIGIN değerini kontrol edin.` }, 403);
     const url = new URL(request.url);
     try {
+      if (url.pathname === '/' || url.pathname === '/health')
+        return json({ ok: true, app: 'biobuzz-scout-sync', version: 2, config: { token: !!env.GITHUB_TOKEN, owner: env.DATA_OWNER || null, repo: env.DATA_REPO || null, allowedOrigin: env.ALLOWED_ORIGIN || null } });
+      if (!env.GITHUB_TOKEN || !env.DATA_OWNER || !env.DATA_REPO) return json({ error: 'Worker ayarları eksik (GITHUB_TOKEN / DATA_OWNER / DATA_REPO)' }, 500);
       if (request.method === 'GET' && url.pathname === '/data') {
         const { data } = await getFile(env);
         return json({ data: normalize(data) });
@@ -57,7 +62,6 @@ export default {
         const result = await commit(env, ops);
         return json(result);
       }
-      if (url.pathname === '/' || url.pathname === '/health') return json({ ok: true, app: 'biobuzz-scout-sync' });
       return json({ error: 'Bulunamadı' }, 404);
     } catch (e) {
       return json({ error: e.message || String(e) }, e.status || 500);

@@ -98,7 +98,14 @@ async function proxyCall(path, body) {
       ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       : { cache: 'no-store' });
   } catch {
-    throw new Error('Sunucuya ulaşılamadı – kayıtlar cihazda bekliyor');
+    if (!navigator.onLine) throw new Error('Çevrimdışı – kayıtlar cihazda bekliyor');
+    // Teşhis: sunucu var ama tarayıcı cevabı engelliyor mu (CORS), yoksa hiç ulaşılamıyor mu?
+    const reachable = await fetch(PROXY_URL + '/health', { mode: 'no-cors', cache: 'no-store' }).then(() => true, () => false);
+    throw new Error(
+      reachable
+        ? 'Sunucu cevap veriyor ama erişime izin vermiyor – Cloudflare\'deki Worker kodu güncel değil (worker.js yeniden yapıştırılıp Deploy edilmeli) ya da ALLOWED_ORIGIN hatalı. Kayıtlar cihazda bekliyor.'
+        : 'Sunucuya ulaşılamadı (Worker adresi yanlış ya da ağ engelliyor) – kayıtlar cihazda bekliyor',
+    );
   }
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error || `Sunucu hatası (${res.status})`);
