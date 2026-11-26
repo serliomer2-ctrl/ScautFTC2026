@@ -51,6 +51,22 @@ PROXY_URL`'e yazılır. (Worker yoksa ya da adres `?admin` ile açılırsa, eski
   Simülatör (2v2 tahmini skor ve kazanma ihtimali). Puan değerleri Simülatör → *Puan Modeli*'nden kural kitabına göre ayarlanır.
 - Veri kayıtları Pages'i yeniden derletmez (`paths-ignore: scouting_data.json`).
 
+## Çevrimdışı & saha özellikleri (OfflineScout eklentileri)
+| Özellik | Dosya | Not |
+|---|---|---|
+| PWA (ana ekrana ekle, internetsiz açılış) | `public/manifest.webmanifest`, `public/sw.js`, `src/pwa.js` | Uygulama kabuğu önbellekte; API istekleri önbelleğe alınmaz |
+| QR ile internetsiz aktarım | `src/lib/qrcodec.js`, `src/components/QRTransfer.jsx` | Kısaltılmış anahtar + deflate; 40 maç ≈ 4 QR. Çift kayıt kontrolü (id + takım/maç) |
+| Saha haritası | `src/components/MatchExtras.jsx`, `src/lib/field.js` | Başlangıç + oto/tele skor noktaları. Bölgeler şematik – kural kitabına göre `field.js`'ten güncelleyin, gerçek görsel için `FIELD_IMAGE` |
+| Döngü süresi ölçer, hızlı etiketler | `src/components/MatchExtras.jsx` | `rec.cycles` (sn), `rec.tags` |
+| Geri Al + kayıt onayı | `src/App.jsx`, `src/components/SaveConfirm.jsx` | Boş kalan alanları hatırlatır |
+| Pit incelemesi + fotoğraf | `src/components/PitScouting.jsx`, `src/lib/image.js` | Fotoğraf cihazda ≤ ~13 KB'a sıkıştırılır; takım başına tek pit kaydı (`kind: 'pit'`) |
+| Kafa kafaya karşılaştırma | `src/components/HeadToHead.jsx` | En yüksek/düşük skor, std. sapma, dönem dağılımı, döngü, etiketler |
+| Turnuva programı (FTCScout) | `src/lib/ftcscout.js`, `src/components/EventSchedule.jsx` | Resmi skorlar + bizim tahminimiz + tahmin isabeti; son program cihazda saklanır |
+
+Yeni kayıt alanları (eski kayıtlarda yoksa varsayılan kullanılır):
+`fieldMap: { start: {x,y,z}, shots: [{x,y,z,p:'a'|'t'}] }`, `cycles: [sn]`, `tags: [id]` ve pit kayıtları
+`{ id: 'pit:<takım>', kind: 'pit', team: {number,name}, pit: {drivetrain, intake, driveMotors, totalMotors, odometry, vision, autoRoutes, autoNotes, driverExperience, notes, photo} }`.
+
 ## Dosyalar
 | | |
 |---|---|

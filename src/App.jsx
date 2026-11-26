@@ -5,8 +5,15 @@ import { RecordList } from './components/Records.jsx';
 import TeamsView from './components/TeamsView.jsx';
 import { AllianceView, PredictorView } from './components/StrategyViews.jsx';
 import { Toast } from './components/ui.jsx';
+import MatchExtras from './components/MatchExtras.jsx';
+import SaveConfirm from './components/SaveConfirm.jsx';
+import QRTransfer from './components/QRTransfer.jsx';
+import PitScouting, { cleanPit } from './components/PitScouting.jsx';
+import HeadToHead from './components/HeadToHead.jsx';
+import EventSchedule from './components/EventSchedule.jsx';
+import { exportPitCSV } from './lib/exportExtra.js';
 import { DEFAULT_SCORING, PROXY_URL, SHOW_SYNC_SETTINGS, SYNC_INTERVAL_MS } from './config.js';
-import { emptyRecord, validate } from './schema.js';
+import { emptyRecord, migrate, validate } from './schema.js';
 import { teamStats } from './lib/analytics.js';
 import { encodeRecord, roomRecords } from './lib/rooms.js';
 import { enqueue, loadLastSync, loadQueue, loadSession, loadToken, saveSession, subscribe, syncNow } from './lib/store.js';
@@ -22,6 +29,7 @@ const THEMES = [
 ];
 const TABS = [
   { id: 'form', icon: '📝', label: 'Gözlem' },
+  { id: 'pit', icon: '🔧', label: 'Pit' },
   { id: 'list', icon: '📋', label: 'Kayıtlar' },
   { id: 'teams', icon: '🏆', label: 'Takımlar' },
   { id: 'alliance', icon: '🤝', label: 'İttifak' },
@@ -75,7 +83,15 @@ export default function App() {
 }
 
 function Room({ session, prefs, setPrefs, onLeave }) {
-  const [records, setRecords] = useState([]);
+  const [allRecords, setRecords] = useState([]);
+  // Oda listesinde maç kayıtları + pit kayıtları (kind: 'pit') birlikte durur
+  const records = useMemo(() => allRecords.filter((r) => r.kind !== 'pit'), [allRecords]);
+  const pitRecords = useMemo(() => allRecords.filter((r) => r.kind === 'pit'), [allRecords]);
+  const pitByTeam = useMemo(() => Object.fromEntries(pitRecords.map((r) => [String(r.team?.number), r])), [pitRecords]);
+  const [confirming, setConfirming] = useState(false);
+  const history = useRef([]); // Geri Al (Undo) yığını
+  const lastEdit = useRef({ k: '', t: 0 });
+  const [histLen, setHistLen] = useState(0);
   const [undecryptable, setUndecryptable] = useState(0);
   const [queueLen, setQueueLen] = useState(() => loadQueue().length);
   const [sync, setSync] = useState({ busy: false, error: '', last: loadLastSync(), online: navigator.onLine });
@@ -159,11 +175,43 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   }, [runSync]);
 
   function update(section, key, value) {
+    // Geri Al için önceki hali sakla; aynı metin alanına art arda yazmayı tek adım say
+    const k = `${section}.${key}`;
+    const now = Date.now();
+    const coalesce = typeof value === 'string' && lastEdit.current.k === k && now - lastEdit.current.t < 1500;
+    lastEdit.current = { k, t: now };
+    if (!coalesce) {
+      history.current.push(rec);
+      if (history.current.length > 80) history.current.shift();
+      setHistLen(history.current.length);
+    }
     setRec((prev) => (section ? { ...prev, [section]: { ...prev[section], [key]: value } } : { ...prev, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: undefined }));
   }
 
+  function resetHistory() {
+    history.current = [];
+    lastEdit.current = { k: '', t: 0 };
+    setHistLen(0);
+  }
+
+  function undo() {
+    const prev = history.current.pop();
+    if (!prev) return;
+    lastEdit.current = { k: '', t: 0 };
+    setRec(prev);
+    setHistLen(history.current.length);
+    flash('↶ Geri alındı');
+  }
+
+  /** Kaydet'e basınca: önce doğrula, sorun yoksa özet/onay penceresini aç */
+  function requestSave() {
+    if (Object.keys(validate(rec)).length) return save();
+    setConfirming(true);
+  }
+
   function newForm(scouter = rec.scouter) {
+    resetHistory();
     clearDraft();
     setRec({ ...emptyRecord(), roomId: session.roomId, scouter });
     setErrors({});
@@ -200,6 +248,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   }
 
   function edit(r) {
+    resetHistory();
     setRec(structuredClone(r));
     setErrors({});
     setTab('form');
@@ -217,6 +266,49 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   async function importInto(list) {
     for (const r of list) await pushRecord({ ...r, roomId: session.roomId, updatedAt: r.updatedAt || new Date().toISOString() });
     flash(`${list.length} kayıt odaya eklendi`);
+    runSync();
+  }
+
+  /** QR'dan gelen kayıtları birleştirir: aynı id → yeni olan kazanır; aynı takım+maç farklı id → yeni olan kalır */
+  const importScanned = async (list) => {
+    const sum = { added: 0, updated: 0, skipped: 0, replaced: 0 };
+    const byId = new Map(allRecords.map((r) => [r.id, r]));
+    const now = new Date().toISOString();
+    for (const raw of list) {
+      const isPit = raw.kind === 'pit';
+      const r = isPit ? cleanPit(raw) : migrate(raw);
+      delete r._pending;
+      r.roomId = session.roomId;
+      if (!r.id || (!isPit && !r.match.teamNumber)) continue;
+      const ex = byId.get(r.id);
+      if (ex && (ex.updatedAt || '') >= (r.updatedAt || '')) {
+        sum.skipped++;
+        continue;
+      }
+      if (isPit && ex?.pit?.photo && !r.pit.photo) r.pit.photo = ex.pit.photo; // QR fotoğraf taşımaz
+      if (!ex && !isPit) {
+        const dup = records.find((x) => String(x.match.teamNumber) === String(r.match.teamNumber) && String(x.match.matchNumber) === String(r.match.matchNumber));
+        if (dup) {
+          if ((dup.updatedAt || '') >= (r.updatedAt || '')) {
+            sum.skipped++;
+            continue;
+          }
+          await pushRecord({ id: dup.id, roomId: session.roomId, deleted: true, updatedAt: now });
+          sum.replaced++;
+        }
+      }
+      await pushRecord(r);
+      ex ? sum.updated++ : sum.added++;
+      byId.set(r.id, r);
+    }
+    if (sum.added + sum.updated) runSync();
+    flash(`QR: ${sum.added} yeni, ${sum.updated} güncel, ${sum.skipped} zaten vardı`);
+    return sum;
+  };
+
+  async function savePit(p) {
+    await pushRecord(p);
+    flash(`#${p.team.number} pit kaydı kaydedildi ✓`);
     runSync();
   }
 
@@ -250,6 +342,17 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 pb-44">
       <Toast toast={toast} />
+      {confirming && (
+        <SaveConfirm
+          rec={rec}
+          isEditing={isEditing}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            save();
+          }}
+        />
+      )}
 
       <header className="sticky top-0 z-30 -mx-4 border-b border-line bg-bg/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
         <div className="flex items-center gap-2">
@@ -297,7 +400,19 @@ function Room({ session, prefs, setPrefs, onLeave }) {
               </div>
             )}
             <ScoutForm rec={rec} update={update} errors={errors} />
+            <MatchExtras rec={rec} update={update} />
           </>
+        )}
+
+        {tab === 'pit' && (
+          <PitScouting
+            pitRecords={pitRecords}
+            teamNames={Object.fromEntries(stats.map((t) => [t.num, t.name]))}
+            session={session}
+            scouter={session.scouter}
+            onSave={savePit}
+            flash={flash}
+          />
         )}
 
         {tab === 'list' && (
@@ -306,10 +421,13 @@ function Room({ session, prefs, setPrefs, onLeave }) {
               <span className="label mb-0">Dışa / İçe Aktarma — {session.roomName}</span>
               <div className="grid grid-cols-3 gap-2">
                 <button className="btn-primary" onClick={() => exportCSV(exportRows)} disabled={!records.length}>⬇ Excel (CSV)</button>
-                <button className="btn-ghost" onClick={() => exportJSON(exportRows)} disabled={!records.length}>⬇ JSON</button>
+                <button className="btn-ghost" onClick={() => exportJSON([...exportRows, ...pitRecords.map(cleanPit)])} disabled={!allRecords.length}>⬇ JSON</button>
                 <button className="btn-ghost" onClick={() => fileRef.current?.click()}>⬆ İçe Al</button>
               </div>
               <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onImport} />
+              {pitRecords.length > 0 && (
+                <button className="btn-ghost text-sm" onClick={() => exportPitCSV(pitRecords.map(cleanPit))}>⬇ Pit verisi (CSV)</button>
+              )}
               {legacyCount > 0 && (
                 <button
                   className="btn-ghost text-sm"
@@ -323,6 +441,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
                 </button>
               )}
             </div>
+            <QRTransfer matchRecords={records} pitRecords={pitRecords} scouter={session.scouter} onImport={importScanned} />
             <RecordList records={records} onEdit={edit} onDelete={remove} filter={filter} setFilter={setFilter} />
           </div>
         )}
@@ -340,21 +459,32 @@ function Room({ session, prefs, setPrefs, onLeave }) {
             }}
           />
         )}
+        {tab === 'alliance' && (
+          <div className="mt-4">
+            <HeadToHead stats={stats} pitByTeam={pitByTeam} />
+          </div>
+        )}
 
         {tab === 'predict' && (
           <PredictorView stats={stats} scoring={prefs.scoring} setScoring={(s) => setPrefs((p) => ({ ...p, scoring: s }))} />
+        )}
+        {tab === 'predict' && (
+          <div className="mt-4">
+            <EventSchedule stats={stats} myTeam={prefs.myTeam} />
+          </div>
         )}
       </main>
 
       {/* Alt kısım: kaydet çubuğu (sadece formda) + sekme menüsü */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/95 backdrop-blur">
         {tab === 'form' && (
-          <div className="mx-auto grid max-w-3xl grid-cols-[1fr_2fr] gap-3 px-4 pt-3">
-            <button className="btn-ghost min-h-[52px]" onClick={() => confirm('Form temizlensin mi?') && newForm()}>Temizle</button>
-            <button className="btn-primary min-h-[52px] text-lg" onClick={save}>{isEditing ? '💾 Güncelle' : '💾 Kaydet'}</button>
+          <div className="mx-auto grid max-w-3xl grid-cols-[1fr_1fr_2fr] gap-2 px-4 pt-3">
+            <button className="btn-ghost min-h-[52px] px-2" onClick={() => confirm('Form temizlensin mi?') && newForm()}>Temizle</button>
+            <button className="btn-ghost min-h-[52px] px-2" onClick={undo} disabled={!histLen} aria-label="Geri al">↶ Geri Al</button>
+            <button className="btn-primary min-h-[52px] text-lg" onClick={requestSave}>{isEditing ? '💾 Güncelle' : '💾 Kaydet'}</button>
           </div>
         )}
-        <nav className="mx-auto grid max-w-3xl grid-cols-5 gap-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
+        <nav className="mx-auto grid max-w-3xl grid-cols-6 gap-1 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
           {TABS.map((t) => (
             <button
               key={t.id}

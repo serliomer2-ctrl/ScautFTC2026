@@ -156,4 +156,11 @@ export const CSV_COLUMNS = [
   ['EndGame Flower Sonuç', (r) => labelOf('flowerResult', r.endgame.flowerResult)],
   ['Notlar', (r) => r.match.notes],
   ['Kayıt Zamanı', (r) => r.updatedAt || r.createdAt || ''],
+  // --- Sonradan eklenen alanlar (Saha haritası, döngü ölçer, hızlı etiketler) ---
+  ['Etiketler', (r) => (r.tags || []).join(' | ')],
+  ['Döngü Sayısı', (r) => (r.cycles?.length ? r.cycles.length : '')],
+  ['Ort. Döngü (sn)', (r) => (r.cycles?.length ? (r.cycles.reduce((s, x) => s + x, 0) / r.cycles.length).toFixed(1) : '')],
+  ['Başlangıç Noktası', (r) => (r.fieldMap?.start ? `${r.fieldMap.start.z || ''} (${r.fieldMap.start.x};${r.fieldMap.start.y})` : '')],
+  ['Oto Skor Noktası', (r) => (r.fieldMap ? (r.fieldMap.shots || []).filter((x) => x.p === 'a').length : '')],
+  ['Tele Skor Noktası', (r) => (r.fieldMap ? (r.fieldMap.shots || []).filter((x) => x.p === 't').length : '')],
 ];
