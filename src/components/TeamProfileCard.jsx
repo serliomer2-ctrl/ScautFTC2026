@@ -5,6 +5,7 @@ import { f1 } from './TeamsView.jsx';
 import { PIT_ALERTS } from './PitScouting.jsx';
 import { DEAD_GAP, MATCH_END, TELE_START, teamActivity } from '../lib/telemetry.js';
 import { MATCH_TIMING } from './MatchMode.jsx';
+import { teamPenalty } from '../lib/penalties.js';
 
 const ago = (iso) => {
   const m = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -33,7 +34,8 @@ const PART = [
   ['endPts', 'Endgame', 'rgb(var(--warn))'],
 ];
 
-export default function TeamProfileCard({ t, pit, onToggleAlert }) {
+export default function TeamProfileCard({ t, pit, onToggleAlert, scoring }) {
+  const pen = scoring ? teamPenalty(t, scoring) : null;
   const p = pit?.pit;
   const counts = {};
   t.records.forEach((r) => (r.tags || []).forEach((g) => (counts[g] = (counts[g] || 0) + 1)));
@@ -64,6 +66,12 @@ export default function TeamProfileCard({ t, pit, onToggleAlert }) {
         <div className="text-right">
           <div className="text-4xl font-extrabold tabular-nums text-accent">{f1(t.points)}</div>
           <div className="text-[11px] text-muted">ort. puan</div>
+          {pen && (
+            <div className="mt-1" title={`Brüt ${f1(t.points)} − rakibe kazandırılan ceza ${f1(pen.given)}`}>
+              <div className={`text-xl font-extrabold tabular-nums ${pen.net < t.points ? 'text-warn' : 'text-fg'}`}>{f1(pen.net)}</div>
+              <div className="text-[10px] text-muted">net katkı</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -78,6 +86,12 @@ export default function TeamProfileCard({ t, pit, onToggleAlert }) {
           )}
           {total === 1 && <div className="flex-1 bg-raised" />}
         </div>
+        {pen && (pen.minor > 0 || pen.major > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            {pen.risk && <span className="rounded-full bg-bad px-3 py-1 font-extrabold text-white">⚠ Yüksek Ceza Riski</span>}
+            <span className="text-muted">Maç başı {f1(pen.minor)} minor · {f1(pen.major)} major → rakibe ≈ {f1(pen.given)} p</span>
+          </div>
+        )}
         <div className="mt-1 flex gap-4 text-xs text-muted">
           {PART.map(([k, l, c]) => (
             <span key={k}><span style={{ color: c }}>■</span> {l} {f1(t[k])}</span>

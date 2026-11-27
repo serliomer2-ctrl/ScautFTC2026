@@ -19,6 +19,10 @@ import Picklist from './components/Picklist.jsx';
 import WhatIf from './components/WhatIf.jsx';
 import Briefing from './components/Briefing.jsx';
 import TextSync from './components/TextSync.jsx';
+import Gallery from './components/Gallery.jsx';
+import ConsensusPanel from './components/ConsensusPanel.jsx';
+import Report from './components/Report.jsx';
+import { averageRecords, resolvedForStats } from './lib/consensus.js';
 import { exportPitCSV } from './lib/exportExtra.js';
 import { DEFAULT_SCORING, PROXY_URL, SHOW_SYNC_SETTINGS, SYNC_INTERVAL_MS } from './config.js';
 import { emptyRecord, migrate, validate } from './schema.js';
@@ -44,7 +48,7 @@ const MAIN = [
   { id: 'scout', icon: '📝', label: 'Scout', subs: [['match', '⚡ Maç'], ['form', '📝 Detaylı'], ['pit', '🔧 Pit']] },
   { id: 'sync', icon: '📡', label: 'Sync / QR', subs: [['list', 'Sync']] },
   { id: 'teams', icon: '🏆', label: 'Takımlar', subs: [['teams', 'Takımlar']], master: true },
-  { id: 'strategy', icon: '🧠', label: 'Strateji', subs: [['brief', '📣 Brifing'], ['picklist', '📋 Picklist'], ['alliance', '🤝 İttifak'], ['predict', '🎲 Simülatör']], master: true },
+  { id: 'strategy', icon: '🧠', label: 'Strateji', subs: [['brief', '📣 Brifing'], ['picklist', '📋 Liste'], ['alliance', '🤝 İttifak'], ['predict', '🎲 Simül.'], ['report', '📄 Rapor']], master: true },
 ];
 const mainOf = (leaf) => MAIN.find((m) => m.subs.some(([id]) => id === leaf)) || MAIN[0];
 
@@ -73,6 +77,9 @@ export default function App() {
   const [prefs, setPrefs] = useState(() => {
     const p = { theme: 'oled', scouter: '', scoring: DEFAULT_SCORING, myTeam: '', role: 'scouter', ...loadPrefs() };
     if (!p.myTeam) p.myTeam = '37677'; // Qubitrobotics – İttifak/Picklist/Program vurgusu için
+    p.scoring = { ...DEFAULT_SCORING, ...p.scoring }; // Faz 5: eski kayıtlı modele ceza puanları eklenir
+    if (!p.hand) p.hand = 'right';
+    if (p.keepAwake === undefined) p.keepAwake = true;
     // Tek seferlik: yeni OLED tasarımına geçiş (kullanıcı sonra istediği temaya dönebilir)
     if (!p.uiV) Object.assign(p, { theme: 'oled', uiV: 3 });
     return p;
@@ -138,13 +145,17 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [toast, setToast] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   const toastTimer = useRef(null);
   const fileRef = useRef(null);
   const legacy = useMemo(() => loadLegacyRecords(), []);
   const [legacyCount, setLegacyCount] = useState(legacy.length);
 
   const isEditing = records.some((r) => r.id === rec.id);
-  const stats = useMemo(() => teamStats(records, prefs.scoring), [records, prefs.scoring]);
+  // Faz 5: aynı maç+takımın çoklu gözlemleri analizde tek (ortalama) kayıt olarak sayılır
+  const consensus = useMemo(() => resolvedForStats(records, prefs.scoring), [records, prefs.scoring]);
+  const stats = useMemo(() => teamStats(consensus.records, prefs.scoring), [consensus, prefs.scoring]);
+  const [teamsView, setTeamsView] = useState('list');
 
   const flash = useCallback((text, type = 'ok') => {
     setToast({ text, type });
@@ -330,7 +341,12 @@ function Room({ session, prefs, setPrefs, onLeave }) {
       }
       if (isPit && ex?.pit?.photo && !r.pit.photo) r.pit.photo = ex.pit.photo; // QR fotoğraf taşımaz
       if (!ex && !isPit) {
-        const dup = records.find((x) => String(x.match.teamNumber) === String(r.match.teamNumber) && String(x.match.matchNumber) === String(r.match.matchNumber));
+        const dup = records.find(
+          (x) =>
+            String(x.match.teamNumber) === String(r.match.teamNumber) &&
+            String(x.match.matchNumber) === String(r.match.matchNumber) &&
+            (x.scouter || '') === (r.scouter || ''), // farklı gözlemci → silinmez, doğrulama motoruna gider
+        );
         if (dup) {
           if ((dup.updatedAt || '') >= (r.updatedAt || '')) {
             sum.skipped++;
@@ -357,6 +373,28 @@ function Room({ session, prefs, setPrefs, onLeave }) {
     const next = { ...base, kind: 'pit', roomId: session.roomId, scouter: base.scouter || session.scouter, createdAt: base.createdAt || now, updatedAt: now };
     next.pit = { ...next.pit, alerts: toggleAlert(next.pit.alerts, alertId, session.scouter) };
     await pushRecord(next);
+    runSync();
+  }
+
+  /** Veri doğrulama kararı: 'average' veya seçilen kaydın id'si */
+  async function resolveConsensus(g, choice) {
+    const now = new Date().toISOString();
+    if (choice === 'average') {
+      const merged = {
+        ...averageRecords(g.records),
+        id: crypto.randomUUID(),
+        roomId: session.roomId,
+        createdAt: now,
+        updatedAt: now,
+        consensus: { status: 'merged', from: g.records.map((r) => r.id), by: session.scouter },
+      };
+      await pushRecord(merged);
+      for (const r of g.records) await pushRecord({ id: r.id, roomId: session.roomId, deleted: true, updatedAt: now });
+      flash(`#${g.team} ${g.match}: ortalama kayıt oluşturuldu`);
+    } else {
+      for (const r of g.records) if (r.id !== choice) await pushRecord({ id: r.id, roomId: session.roomId, deleted: true, updatedAt: now });
+      flash(`#${g.team} ${g.match}: seçilen kayıt tutuldu`);
+    }
     runSync();
   }
 
@@ -433,6 +471,8 @@ function Room({ session, prefs, setPrefs, onLeave }) {
           state={mm}
           setState={setMm}
           onFinish={requestSave}
+          hand={prefs.hand}
+          keepAwake={prefs.keepAwake}
           onExit={() => {
             setMm({ ...mm, active: false, resumable: true });
             setResumeAsk(true);
@@ -461,6 +501,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
           >
             {role === 'master' ? '🧠 Master' : '📝 Scouter'}
           </button>
+          <button className="btn-ghost min-h-[44px] w-11 px-0" onClick={() => setShowPrefs((v) => !v)} title="Ayarlar" aria-label="Ayarlar">⚙</button>
           <button className="btn-ghost min-h-[44px] w-11 px-0" onClick={cycleTheme} title="Tema (OLED / Koyu / Saha / Açık)">
             {THEMES.find((t) => t.id === prefs.theme)?.label}
           </button>
@@ -477,6 +518,8 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         </div>
         {sync.error && <p className="mt-1 text-xs text-bad">{sync.error}</p>}
       </header>
+
+      {showPrefs && <PrefsPanel prefs={prefs} setPrefs={setPrefs} onClose={() => setShowPrefs(false)} />}
 
       {SHOW_SYNC_SETTINGS && showSettings && (
         <div className="mt-3">
@@ -565,7 +608,10 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         {tab === 'list' && (
           <div className="grid gap-4">
             {role === 'master' ? (
-              <MasterScanner onImport={importScanned} />
+              <>
+                <MasterScanner onImport={importScanned} />
+                <ConsensusPanel groups={consensus.groups} scoring={prefs.scoring} onResolve={resolveConsensus} />
+              </>
             ) : (
               <ScouterQRSend records={records} scouter={session.scouter} />
             )}
@@ -601,13 +647,33 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         )}
 
         {tab === 'teams' && selectedTeam && stats.some((t) => t.num === selectedTeam) && (
-          <TeamProfileCard t={stats.find((t) => t.num === selectedTeam)} pit={pitByTeam[selectedTeam]} onToggleAlert={togglePitAlert} />
+          <TeamProfileCard t={stats.find((t) => t.num === selectedTeam)} pit={pitByTeam[selectedTeam]} onToggleAlert={togglePitAlert} scoring={prefs.scoring} />
         )}
-        {tab === 'teams' && <TeamsView stats={stats} selected={selectedTeam} setSelected={setSelectedTeam} />}
+        {tab === 'teams' && !selectedTeam && (
+          <div className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-surface p-1">
+            {[
+              ['list', '☰ Liste'],
+              ['grid', '▦ Galeri'],
+            ].map(([k, l]) => (
+              <button key={k} onClick={() => setTeamsView(k)} className={`min-h-[44px] rounded-xl text-sm font-bold ${teamsView === k ? 'bg-accent text-accent-fg' : 'text-muted'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+        {tab === 'teams' && !selectedTeam && teamsView === 'grid' ? (
+          <Gallery stats={stats} pitRecords={pitRecords} scoring={prefs.scoring} onOpen={setSelectedTeam} />
+        ) : (
+          tab === 'teams' && <TeamsView stats={stats} selected={selectedTeam} setSelected={setSelectedTeam} />
+        )}
+
+        {tab === 'report' && (
+          <Report stats={stats} rawRecords={records} pitRecords={pitRecords} groups={consensus.groups} scoring={prefs.scoring} myTeam={prefs.myTeam} session={session} />
+        )}
 
         {tab === 'brief' && <Briefing stats={stats} pitByTeam={pitByTeam} myTeam={prefs.myTeam} />}
 
-        {tab === 'picklist' && <Picklist stats={stats} roomId={session.roomId} myTeam={prefs.myTeam} pitByTeam={pitByTeam} />}
+        {tab === 'picklist' && <Picklist stats={stats} roomId={session.roomId} myTeam={prefs.myTeam} pitByTeam={pitByTeam} scoring={prefs.scoring} />}
 
         {tab === 'alliance' && (
           <AllianceView
@@ -672,5 +738,56 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         </nav>
       </div>
     </div>
+  );
+}
+
+/* ============================ AYARLAR (Faz 5) ============================ */
+function PrefsPanel({ prefs, setPrefs, onClose }) {
+  const set = (k, v) => setPrefs((p) => ({ ...p, [k]: v }));
+  const wakeOk = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+  return (
+    <section className="card mt-3 grid gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">⚙ Saha Ayarları</h2>
+        <button className="btn-ghost min-h-[40px] px-3 text-sm" onClick={onClose}>Kapat</button>
+      </div>
+      <div className="grid gap-2">
+        <span className="label mb-0">Tek elle kullanım (maç ekranındaki + butonları ve İleri)</span>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ['left', '🤚 Sol El'],
+            ['right', 'Sağ El ✋'],
+          ].map(([k, l]) => (
+            <button key={k} onClick={() => set('hand', k)} className={`btn min-h-[52px] border-2 ${prefs.hand === k ? 'border-accent bg-accent text-accent-fg' : 'border-line bg-raised'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="block font-semibold">Maç ekranında ekranı uyanık tut</span>
+          <span className="text-xs text-muted">{wakeOk ? 'Telefon maç sırasında kararmaz / kilitlenmez.' : 'Bu tarayıcı desteklemiyor – ayar etkisiz.'}</span>
+        </span>
+        <input type="checkbox" className="h-7 w-7 accent-[rgb(var(--accent))]" checked={prefs.keepAwake} onChange={(e) => set('keepAwake', e.target.checked)} />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          ['minorFoul', 'Minor Foul puanı'],
+          ['majorFoul', 'Major Foul puanı'],
+        ].map(([k, l]) => (
+          <label key={k} className="grid gap-1 text-sm">
+            <span className="text-muted">{l}</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={prefs.scoring?.[k] ?? ''}
+              onChange={(e) => setPrefs((p) => ({ ...p, scoring: { ...p.scoring, [k]: Number(e.target.value.replace(/\D/g, '')) || 0 } }))}
+            />
+          </label>
+        ))}
+      </div>
+      <p className="-mt-2 text-xs text-muted">Ceza puanları Net Katkı hesabında kullanılır – kural kitabına göre güncelleyin.</p>
+    </section>
   );
 }

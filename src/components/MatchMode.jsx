@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { cachedEvent } from '../lib/ftcscout.js';
 import { QUICK_TAGS } from './MatchExtras.jsx';
 
@@ -11,6 +11,8 @@ import { QUICK_TAGS } from './MatchExtras.jsx';
  * Maç durumu (faz, saat) ayrı anahtarda saklanır; uygulama kapansa bile kaldığı yerden devam edilir.
  */
 const MM_KEY = 'bb2.matchmode';
+/** Tek elle kullanım: 'right' → ana + butonları ve büyük sayaç sağda; 'left' → solda */
+const HandCtx = createContext('right');
 // Standart FTC süreleri (sn) – Biobuzz kural kitabı farklıysa buradan güncelleyin
 export const MATCH_TIMING = { auto: 30, transition: 8, teleop: 120, endgame: 30 };
 const PHASES = [
@@ -164,8 +166,12 @@ export function PreMatch({ rec, update, teamNames, onStart, resume }) {
 }
 
 /* ============================ MAÇ EKRANI ============================ */
-export default function MatchScreen({ rec, update, patch, undo, histLen, state, setState, onFinish, onExit }) {
+export default function MatchScreen({ rec, update, patch, undo, histLen, state, setState, onFinish, onExit, hand = 'right', keepAwake = true }) {
   const [, tick] = useState(0);
+  const awake = useWakeLock(keepAwake);
+  const fouls = rec.fouls || { minor: 0, major: 0 };
+  const addFoul = (kind) =>
+    patch((r) => withEvent({ ...r, fouls: { minor: 0, major: 0, ...r.fouls, [kind]: ((r.fouls || {})[kind] || 0) + 1 } }, stampOf(state), `foul_${kind}`));
   const autoSwitched = useRef(state.phase);
   const clock = clockState(state.startedAt);
 
@@ -194,15 +200,19 @@ export default function MatchScreen({ rec, update, patch, undo, histLen, state, 
   const allianceBg = rec.match.alliance === 'blue' ? 'bg-blue-alliance' : 'bg-red-alliance';
 
   return (
+    <HandCtx.Provider value={hand}>
     <div className="fixed inset-0 z-40 flex h-[100dvh] flex-col bg-bg">
       {/* ÜST: maç bilgisi + saat + fazlar */}
       <div className={`shrink-0 border-b-4 ${allianceBorder} bg-surface px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]`}>
         <div className="flex items-center gap-2">
-          <span className={`rounded-lg px-2 py-1 text-sm font-extrabold text-white ${allianceBg}`}>{rec.match.alliance === 'blue' ? 'MAVİ' : 'KIRMIZI'}</span>
+          {/* İttifak rengi: takım numarası + alt çizgi (ceza butonlarına yer açmak için rozet yok) */}
+          <span className={`h-10 w-1.5 shrink-0 rounded-full ${allianceBg}`} aria-label={rec.match.alliance === 'blue' ? 'Mavi ittifak' : 'Kırmızı ittifak'} />
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-xl font-extrabold">#{rec.match.teamNumber} <span className="text-base text-muted">· {rec.match.matchNumber}</span></div>
-            {rec.match.teamName && <div className="truncate text-xs text-muted">{rec.match.teamName}</div>}
+            <div className={`truncate text-xl font-extrabold ${rec.match.alliance === 'blue' ? 'text-blue-alliance' : 'text-red-alliance'}`}>{rec.match.teamNumber}</div>
+            <div className="truncate text-xs text-muted">{rec.match.matchNumber}{rec.match.teamName ? ` · ${rec.match.teamName}` : ''}</div>
           </div>
+          <HoldButton label="Minor" count={fouls.minor} tone="warn" onHold={() => addFoul('minor')} />
+          <HoldButton label="Major" count={fouls.major} tone="bad" onHold={() => addFoul('major')} />
           <button
             type="button"
             className="rounded-xl bg-raised px-3 py-1 text-center"
@@ -210,7 +220,7 @@ export default function MatchScreen({ rec, update, patch, undo, histLen, state, 
             title="Maç saatini başlat / sıfırla"
           >
             <div className={`text-2xl font-extrabold tabular-nums ${clock?.label === 'ENDGAME' ? 'text-warn' : ''}`}>{clock ? mmss(clock.left) : '⏱'}</div>
-            <div className="text-[10px] font-bold text-muted">{clock ? clock.label : 'SAAT'}</div>
+            <div className="text-[10px] font-bold text-muted">{clock ? clock.label : 'SAAT'}{awake ? ' 🔆' : ''}</div>
           </button>
           <button type="button" className="h-11 w-11 rounded-xl bg-raised text-lg" onClick={onExit} aria-label="Maç ekranından çık (veri korunur)">✕</button>
         </div>
@@ -238,34 +248,129 @@ export default function MatchScreen({ rec, update, patch, undo, histLen, state, 
       </div>
 
       {/* ALT: Geri Al + gezinme */}
-      <div className="grid shrink-0 grid-cols-[1fr_1fr_1.6fr] gap-2 border-t border-line bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
-        <button type="button" className="btn-ghost min-h-[60px] px-1" disabled={!histLen} onClick={undo}>↶ Geri Al</button>
-        <button type="button" className="btn-ghost min-h-[60px] px-1" disabled={idx === 0} onClick={() => setPhase(PHASES[idx - 1].id)}>◀ Önceki</button>
+      {/* Ana eylem (İleri/Bitir) başparmağın tarafında */}
+      <div
+        className={`grid shrink-0 gap-2 border-t border-line bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 ${hand === 'left' ? 'grid-cols-[1.6fr_1fr_1fr]' : 'grid-cols-[1fr_1fr_1.6fr]'}`}
+      >
+        <button type="button" className={`btn-ghost min-h-[60px] px-1 ${hand === 'left' ? 'order-3' : ''}`} disabled={!histLen} onClick={undo}>↶ Geri Al</button>
+        <button type="button" className="btn-ghost order-2 min-h-[60px] px-1" disabled={idx === 0} onClick={() => setPhase(PHASES[idx - 1].id)}>◀ Önceki</button>
         {idx < PHASES.length - 1 ? (
-          <button type="button" className="btn-primary min-h-[60px] text-lg" onClick={() => setPhase(PHASES[idx + 1].id)}>İleri ▶</button>
+          <button type="button" className={`btn-primary min-h-[60px] text-lg ${hand === 'left' ? 'order-1' : 'order-3'}`} onClick={() => setPhase(PHASES[idx + 1].id)}>İleri ▶</button>
         ) : (
-          <button type="button" className="btn min-h-[60px] bg-warn text-lg text-black" onClick={onFinish}>✅ Bitir</button>
+          <button type="button" className={`btn min-h-[60px] bg-warn text-lg text-black ${hand === 'left' ? 'order-1' : 'order-3'}`} onClick={onFinish}>✅ Bitir</button>
         )}
       </div>
     </div>
+    </HandCtx.Provider>
+  );
+}
+
+/* ------------------------- ekran uyanık tutma (Wake Lock) ------------------------- */
+function useWakeLock(enabled) {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    if (!enabled || !('wakeLock' in navigator)) return undefined; // desteklenmiyorsa sessizce geç
+    let lock = null;
+    let dead = false;
+    const acquire = async () => {
+      try {
+        if (document.visibilityState !== 'visible') return;
+        lock = await navigator.wakeLock.request('screen');
+        if (dead) return lock.release();
+        setActive(true);
+        lock.addEventListener('release', () => setActive(false));
+      } catch {
+        setActive(false); // düşük pil modu vb. – sorun değil
+      }
+    };
+    // Sekme arka plana gidince kilit tarayıcı tarafından bırakılır; geri gelince yeniden al
+    const onVisible = () => document.visibilityState === 'visible' && acquire();
+    acquire();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      dead = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      lock?.release().catch(() => {});
+    };
+  }, [enabled]);
+  return active;
+}
+
+/* ------------------- yanlışlıkla basılmayan ceza butonu (basılı tut) ------------------- */
+const HOLD_MS = 600;
+function HoldButton({ label, count, tone, onHold }) {
+  const [p, setP] = useState(0); // 0..1 dolum
+  const [hint, setHint] = useState(false);
+  const t0 = useRef(0);
+  const raf = useRef(0);
+  const done = useRef(false);
+  const prog = useRef(0);
+  const stop = () => {
+    cancelAnimationFrame(raf.current);
+    // Erken bırakıldıysa (kısa dokunuş) sayılmaz, ipucu gösterilir
+    if (!done.current && prog.current > 0) {
+      setHint(true);
+      setTimeout(() => setHint(false), 1200);
+    }
+    prog.current = 0;
+    setP(0);
+  };
+  const step = () => {
+    const v = Math.min(1, (performance.now() - t0.current) / HOLD_MS);
+    prog.current = v;
+    setP(v);
+    if (v >= 1) {
+      done.current = true;
+      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+      onHold();
+      prog.current = 0;
+      setP(0);
+      return;
+    }
+    raf.current = requestAnimationFrame(step);
+  };
+  const color = tone === 'bad' ? 'bg-bad' : 'bg-warn';
+  return (
+    <button
+      type="button"
+      className={`relative h-11 w-12 shrink-0 select-none overflow-hidden rounded-xl border-2 ${tone === 'bad' ? 'border-bad' : 'border-warn'} bg-raised text-center touch-none`}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        done.current = false;
+        prog.current = 0.001;
+        t0.current = performance.now();
+        raf.current = requestAnimationFrame(step);
+      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label={`${label} ceza – eklemek için basılı tutun`}
+    >
+      <span className={`absolute inset-y-0 left-0 ${color} opacity-60`} style={{ width: `${p * 100}%` }} />
+      <span className="relative block text-lg font-extrabold leading-none">{count}</span>
+      <span className="relative block text-[9px] font-bold leading-none">{hint ? 'BASILI TUT' : label.toUpperCase()}</span>
+    </button>
   );
 }
 
 /* ----------------------------- kart bileşenleri ----------------------------- */
 function Stepper({ label, value, onChange, step = 1, max = 99, big = false, suffix = '', hint }) {
+  const hand = useContext(HandCtx);
+  const left = hand === 'left';
   return (
-    <div className={`flex flex-col rounded-2xl border border-line bg-surface p-1.5 [@media(min-height:720px)]:p-2 ${big ? 'row-span-2' : ''}`}>
+    <div className={`flex flex-col rounded-2xl border border-line bg-surface p-1.5 [@media(min-height:720px)]:p-2 ${big ? `row-span-2 row-start-1 ${left ? 'col-start-1' : 'col-start-2'}` : ''}`}>
       <div className="flex items-baseline justify-between px-1">
         <span className="text-sm font-bold text-muted">{label}</span>
         {hint && <span className="text-[11px] text-muted">{hint}</span>}
       </div>
       <div className={`grid flex-1 grid-cols-[1fr_auto_1fr] items-stretch gap-2 ${big ? 'min-h-[118px] [@media(min-height:720px)]:min-h-[150px]' : 'min-h-[56px] [@media(min-height:720px)]:min-h-[64px]'}`}>
-        <button type="button" className="rounded-xl bg-raised text-4xl font-bold active:scale-95 disabled:opacity-30" disabled={value <= 0} onClick={() => onChange(Math.max(0, value - step))} aria-label={`${label} azalt`}>−</button>
-        <div className={`flex items-center justify-center font-extrabold tabular-nums ${big ? 'min-w-[72px] text-6xl' : 'min-w-[56px] text-3xl'}`}>
+        <button type="button" className={`rounded-xl bg-raised text-4xl font-bold active:scale-95 disabled:opacity-30 ${left ? 'order-3' : ''}`} disabled={value <= 0} onClick={() => onChange(Math.max(0, value - step))} aria-label={`${label} azalt`}>−</button>
+        <div className={`order-2 flex items-center justify-center font-extrabold tabular-nums ${big ? 'min-w-[72px] text-6xl' : 'min-w-[56px] text-3xl'}`}>
           {value}
           {suffix}
         </div>
-        <button type="button" className="rounded-xl bg-accent text-4xl font-bold text-accent-fg active:scale-95 disabled:opacity-30" disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))} aria-label={`${label} artır`}>+</button>
+        <button type="button" className={`rounded-xl bg-accent text-4xl font-bold text-accent-fg active:scale-95 disabled:opacity-30 ${left ? 'order-1' : 'order-3'}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))} aria-label={`${label} artır`}>+</button>
       </div>
     </div>
   );
@@ -301,7 +406,7 @@ const YN = [
 function AutoPhase({ rec, update, patch, stamp }) {
   const a = rec.auto;
   return (
-    <div className="grid grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
+    <div className="grid grid-flow-row-dense grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
       <Stepper
         big
         label="Otonom Tip"
@@ -377,7 +482,7 @@ function TeleopPhase({ rec, patch, update, state, setState }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
+    <div className="grid grid-flow-row-dense grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
       <Stepper big label="TeleOp Tip" hint="+ = skor (döngü otomatik)" value={t.tipCount} onChange={score} />
       <Stepper label="Tek seferde taşıma" value={t.carryCapacity} onChange={(v) => update('teleop', 'carryCapacity', v)} max={20} />
       <Stepper label="İsabet" value={t.accuracy} step={10} max={100} suffix="%" onChange={(v) => update('teleop', 'accuracy', v)} />
@@ -403,7 +508,7 @@ function EndgamePhase({ rec, update, patch, stamp }) {
   const e = rec.endgame;
   const tags = rec.tags || [];
   return (
-    <div className="grid grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
+    <div className="grid grid-flow-row-dense grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
       <Choice label="Flower planı" options={YN} value={e.flowerPlanned} onChange={(v) => update('endgame', 'flowerPlanned', v)} />
       <div className="rounded-2xl border border-line bg-surface p-1.5 [@media(min-height:720px)]:p-2">
         <div className="px-1 pb-1 text-sm font-bold text-muted">Sürücü</div>

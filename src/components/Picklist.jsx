@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { f1 } from './TeamsView.jsx';
+import { teamPenalty } from '../lib/penalties.js';
 
 /**
  * İnteraktif ittifak seçim listesi (Picklist)
@@ -20,7 +21,7 @@ function load(roomId) {
   }
 }
 
-export default function Picklist({ stats, roomId, myTeam, pitByTeam }) {
+export default function Picklist({ stats, roomId, myTeam, pitByTeam, scoring = {} }) {
   const [st, setSt] = useState(() => load(roomId));
   const [drag, setDrag] = useState(null); // { from, over }
   const listRef = useRef(null);
@@ -31,6 +32,8 @@ export default function Picklist({ stats, roomId, myTeam, pitByTeam }) {
   }, [st, roomId]);
 
   const byNum = useMemo(() => Object.fromEntries(stats.map((t) => [t.num, t])), [stats]);
+  // Faz 5: Net Katkı (brüt − rakibe kazandırılan ceza) ve Yüksek Ceza Riski
+  const pen = useMemo(() => Object.fromEntries(stats.map((t) => [t.num, teamPenalty(t, scoring)])), [stats, scoring]);
   const max = useMemo(
     () => ({
       auto: Math.max(1e-9, ...stats.map((t) => t.autoPts)),
@@ -52,7 +55,8 @@ export default function Picklist({ stats, roomId, myTeam, pitByTeam }) {
   }, [st.order, stats, byNum, w.auto, w.tele, w.end]);
 
   const set = (patch) => setSt((s) => ({ ...s, ...patch }));
-  const autoSort = (by) => set({ order: [...stats].sort((a, b) => (by === 'avg' ? b.points - a.points : score(b) - score(a))).map((t) => t.num) });
+  const autoSort = (by) =>
+    set({ order: [...stats].sort((a, b) => (by === 'avg' ? b.points - a.points : by === 'net' ? pen[b.num].net - pen[a.num].net : score(b) - score(a))).map((t) => t.num) });
   const move = (from, to) => {
     if (to < 0 || to >= order.length || from === to) return;
     const o = [...order];
@@ -104,9 +108,10 @@ export default function Picklist({ stats, roomId, myTeam, pitByTeam }) {
             <span className="text-right font-bold tabular-nums">%{Math.round((w[k] / wSum) * 100)}</span>
           </label>
         ))}
-        <div className="grid grid-cols-2 gap-2">
-          <button className="btn-primary" onClick={() => autoSort('weighted')}>⇅ Ağırlığa göre sırala</button>
-          <button className="btn-ghost" onClick={() => autoSort('avg')}>⇅ Ort. puana göre</button>
+        <div className="grid grid-cols-3 gap-2">
+          <button className="btn-primary px-1 text-sm" onClick={() => autoSort('weighted')}>⇅ Ağırlıklı</button>
+          <button className="btn-ghost px-1 text-sm" onClick={() => autoSort('avg')}>⇅ Ort. puan</button>
+          <button className="btn-ghost px-1 text-sm" onClick={() => autoSort('net')}>⇅ Net katkı</button>
         </div>
       </section>
 
@@ -150,7 +155,10 @@ export default function Picklist({ stats, roomId, myTeam, pitByTeam }) {
                 {pitByTeam[n]?.pit?.photo && <img src={pitByTeam[n].pit.photo} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />}
                 <span className={`min-w-0 ${s === 'crossed' ? 'text-muted line-through decoration-bad decoration-2' : ''}`}>
                   <span className="block truncate font-extrabold">#{n} {s === 'picked' && <span className="text-ok">✓ Seçildi</span>}{s === 'crossed' && <span className="text-bad"> Elendi</span>}</span>
-                  <span className="block truncate text-xs text-muted">{t.name || '—'} · {t.n} maç · ort {f1(t.points)}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {t.name || '—'} · {t.n} maç · ort {f1(t.points)} · net {f1(pen[n]?.net)}
+                    {pen[n]?.risk && <b className="ml-1 rounded bg-bad px-1 text-[10px] text-white">CEZA RİSKİ</b>}
+                  </span>
                 </span>
               </button>
               <span className="w-12 text-right text-xl font-extrabold tabular-nums text-accent">{Math.round(score(t))}</span>

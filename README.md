@@ -93,6 +93,15 @@ Yeni kayıt alanları (eski kayıtlarda yoksa varsayılan kullanılır):
 Geriye dönük uyumluluk: yeni alanlar (`timeline`, `pit.alerts`) eski kayıtlarda yoktur ve her yerde `|| []` ile okunur;
 şema sürümü değişmedi, eski uygulama sürümleri bilinmeyen alanları yok sayar.
 
+## Jüri Raporlama, Veri Doğrulama ve Saha Ergonomisi (Faz 5)
+| Modül | Dosya | Not |
+|---|---|---|
+| Jüri / Portfolyo raporu | `src/components/Report.jsx` (Strateji → 📄 Rapor), `src/index.css` (`@media print`) | Yönetici özeti, #37677 gelişim grafiği, metodoloji (puan modeli, picklist ağırlıkları, net katkı, doğrulama), en iyi ittifak eşleşmeleri. 🖨 Yazdır/PDF (açık tema, A4) + 🎤 Jüri Sunum Modu (tam ekran slaytlar) |
+| Ceza takibi + Net Katkı | `MatchMode.jsx` (basılı tut Minor/Major), `MatchExtras.jsx`, `src/lib/penalties.js` | `rec.fouls = {minor, major}`; eski kayıtta “Ceza Aldı” etiketi = 1 minor. Net = brüt − rakibe ceza puanı; ≥10 p/maç veya ≥%30 major → “Yüksek Ceza Riski” (profil, picklist, galeri) |
+| Robot galerisi | `src/components/Gallery.jsx` (Takımlar → ▦ Galeri) | Pit fotoğrafı yoksa robot silüeti; puan ve ceza rozetleri |
+| Çift gözlem doğrulama | `src/lib/consensus.js`, `src/components/ConsensusPanel.jsx` (Master → Sync) | Aynı maç+takım, farklı gözlemci. Uyum ≥%90 doğrulanmış; altı: Ortalamasını Al / 1. / 2. kaydı seç. Analizler grupları tek kayıt sayar. QR/metin içe aktarmada yalnız **aynı gözlemcinin** eski kaydı değiştirilir |
+| Saha ergonomisi | `MatchMode.jsx`, `App.jsx` (⚙ Ayarlar) | Ekranı uyanık tut (Wake Lock, desteklenmezse sessiz), Sağ/Sol el düzeni (+ butonları, büyük sayaç, İleri) |
+
 ## Dosyalar
 | | |
 |---|---|

@@ -11,7 +11,9 @@
  *   eg  endgame: plan,sonuç          rb robot: şasi,intake,yetenekler(5 hane)
  *   tag etiketler (virgüllü)         cy döngüler (desisaniye, virgüllü)
  *   fm  saha: başlangıç ve skor noktaları "xx.yy" (0–99), skorlarda a|t son eki, ';' ayraçlı
- *   tl  telemetri: "<sn><kod>" virgüllü; kod a=oto skor, t=teleop skor, f=flower yaptı, x=flower yapamadı, G<etiket>
+ *   tl  telemetri: "<sn><kod>" virgüllü; kod a=oto skor, t=teleop skor, f=flower yaptı, x=flower yapamadı,
+ *       m=küçük ceza, M=büyük ceza, G<etiket>
+ *   fo  cezalar: küçük,büyük (Faz 5)
  *   no / pe / ad / do  notlar, otonom açıklaması, asistan açıklaması, diğer şasi (yalnız '%' '|' kaçışlı)
  * Üçlü (Evet/Hayır/boş) değerler 1 / 0 / boş; seçmeli alanlar tek harf kodla yazılır.
  */
@@ -82,7 +84,8 @@ export function encodeMatch(r) {
   if (r.fieldMap && (r.fieldMap.start || r.fieldMap.shots?.length)) {
     put('fm', [r.fieldMap.start ? pt(r.fieldMap.start) : '', ...(r.fieldMap.shots || []).map((s) => pt(s) + s.p)].join(';'));
   }
-  const TL = { auto_score: 'a', teleop_score: 't', flower_done: 'f', flower_fail: 'x' };
+  const TL = { auto_score: 'a', teleop_score: 't', flower_done: 'f', flower_fail: 'x', foul_minor: 'm', foul_major: 'M' };
+  if (r.fouls && (r.fouls.minor || r.fouls.major)) put('fo', `${r.fouls.minor || 0},${r.fouls.major || 0}`);
   put('tl', (r.timeline || []).map((e) => `${e.t}${TL[e.a] || (e.a.startsWith('tag:') ? 'G' + e.a.slice(4) : '')}`).filter((x) => !/^[\d.]+$/.test(x)).join(','));
   put('no', esc(r.match.notes || ''));
   put('pe', esc(a.performance || ''));
@@ -130,11 +133,15 @@ export async function decodeMatch(text) {
   ABIL.forEach((k, i) => (r.robot.abilities[k] = untri(bits[i] === '-' ? '' : bits[i])));
   r.tags = f.tag ? f.tag.split(',') : [];
   r.cycles = f.cy ? f.cy.split(',').map((x) => +x / 10) : [];
+  if (f.fo) {
+    const [mi, ma] = f.fo.split(',').map(Number);
+    r.fouls = { minor: mi || 0, major: ma || 0 };
+  }
   if (f.tl) {
-    const TL = { a: 'auto_score', t: 'teleop_score', f: 'flower_done', x: 'flower_fail' };
+    const TL = { a: 'auto_score', t: 'teleop_score', f: 'flower_done', x: 'flower_fail', m: 'foul_minor', M: 'foul_major' };
     r.timeline = f.tl
       .split(',')
-      .map((s) => /^(\d+(?:\.\d+)?)(G.+|[atfx])$/.exec(s))
+      .map((s) => /^(\d+(?:\.\d+)?)(G.+|[atfxmM])$/.exec(s))
       .filter(Boolean)
       .map(([, t, c]) => ({ t: +t, a: c[0] === 'G' ? `tag:${c.slice(1)}` : TL[c] }));
   }

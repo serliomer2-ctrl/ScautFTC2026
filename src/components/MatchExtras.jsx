@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FIELD_IMAGE, FIELD_ZONES, ZONE_LABEL, zoneAt } from '../lib/field.js';
-import { Section, Segmented } from './ui.jsx';
+import { Counter, Field, Section, Segmented } from './ui.jsx';
 
 /**
  * Maç formuna eklenen yeni alanlar (mevcut ScoutForm'a dokunmadan, altına eklenir):
@@ -31,6 +31,16 @@ export default function MatchExtras({ rec, update }) {
       </Section>
       <Section title="Döngü Süresi Ölçer" icon="⏱️">
         <CycleTimer cycles={rec.cycles || []} onChange={(v) => update(null, 'cycles', v)} />
+      </Section>
+      <Section title="Cezalar (rakibe puan)" icon="🟥">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Minor Foul (küçük ceza)">
+            <Counter value={rec.fouls?.minor || 0} onChange={(v) => update(null, 'fouls', { minor: 0, major: 0, ...rec.fouls, minor: v })} max={30} />
+          </Field>
+          <Field label="Major Foul (büyük ceza)">
+            <Counter value={rec.fouls?.major || 0} onChange={(v) => update(null, 'fouls', { minor: 0, major: 0, ...rec.fouls, major: v })} max={30} />
+          </Field>
+        </div>
       </Section>
       <Section title="Hızlı Durum Etiketleri" icon="🏷️">
         <QuickTags value={rec.tags || []} onChange={(v) => update(null, 'tags', v)} />

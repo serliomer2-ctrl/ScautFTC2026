@@ -37,6 +37,8 @@ export const DEFAULT_SCORING = {
   teleTip: 5, // TeleOp'taki 1 Tip kaç puan
   endFlower: 15, // End Game Flower başarılı olursa
   autoBonus: 5, // otonomu "Başarılı" tamamlarsa (park / görev bonusu varsayımı)
+  minorFoul: 5, // Faz 5: rakibe kazandırılan puan – Küçük ceza (Minor Foul)
+  majorFoul: 15, // Faz 5: rakibe kazandırılan puan – Büyük ceza (Major Foul)
 };
 
 export const SYNC_INTERVAL_MS = 45_000;

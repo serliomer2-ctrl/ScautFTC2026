@@ -95,3 +95,21 @@ body {
 
 /* Kaydırma çubuğu (slider) – büyük başparmak */
 input[type='range'] { accent-color: rgb(var(--accent)); height: 2.25rem; }
+
+/* ---------- Faz 5: Jüri raporu yazdırma / PDF ---------- */
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area {
+    position: absolute; inset: 0 auto auto 0; width: 100%;
+    /* Rapor içinde açık tema tokenları: mürekkep dostu, yüksek kontrast */
+    --bg: 255 255 255; --surface: 255 255 255; --raised: 243 244 246; --line: 209 213 219;
+    --fg: 17 24 39; --muted: 75 85 99; --accent: 5 150 105; --accent-fg: 255 255 255;
+    --warn: 180 83 9; --ok: 5 150 105; --bad: 220 38 38;
+    color: rgb(var(--fg)); background: #fff;
+  }
+  .print-area .no-print { display: none !important; }
+  .print-area section { break-inside: avoid; box-shadow: none !important; }
+}
