@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 /* Tema değişkenleri (RGB kanalları) */
+:root {
+  --warn: 245 158 11;
+}
 :root,
 [data-theme='dark'] {
   --bg: 15 17 21;
@@ -31,6 +34,23 @@
   --bad: 220 38 38;
   --alliance-red: 220 38 38;
   --alliance-blue: 37 99 235;
+}
+/* OfflineScout tarzı OLED tema (varsayılan): #0F1115 zemin, #181B20 kart, keskin ittifak renkleri,
+   birincil eylemler zümrüt yeşili, uyarı/zamanlayıcı kehribar */
+[data-theme='oled'] {
+  --bg: 15 17 21;          /* #0F1115 */
+  --surface: 24 27 32;     /* #181B20 */
+  --raised: 34 38 46;      /* #22262E */
+  --line: 46 51 61;        /* #2E333D */
+  --fg: 243 244 246;
+  --muted: 148 156 170;
+  --accent: 16 185 129;    /* #10B981 zümrüt – birincil eylem */
+  --accent-fg: 4 20 14;
+  --warn: 245 158 11;      /* #F59E0B kehribar */
+  --ok: 16 185 129;
+  --bad: 239 68 68;
+  --alliance-red: 239 68 68;   /* #EF4444 */
+  --alliance-blue: 59 130 246; /* #3B82F6 */
 }
 /* Saha modu: güneş altında / parlak salon ışığında okunabilir, saf siyah + saf renkler */
 [data-theme='field'] {

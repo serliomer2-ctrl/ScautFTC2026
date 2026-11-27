@@ -14,6 +14,7 @@ export default {
         accent: v('accent'),
         'accent-fg': v('accent-fg'),
         ok: v('ok'),
+        warn: v('warn'),
         bad: v('bad'),
         red: { alliance: v('alliance-red') },
         blue: { alliance: v('alliance-blue') },

@@ -67,6 +67,20 @@ Yeni kayıt alanları (eski kayıtlarda yoksa varsayılan kullanılır):
 `fieldMap: { start: {x,y,z}, shots: [{x,y,z,p:'a'|'t'}] }`, `cycles: [sn]`, `tags: [id]` ve pit kayıtları
 `{ id: 'pit:<takım>', kind: 'pit', team: {number,name}, pit: {drivetrain, intake, driveMotors, totalMotors, odometry, vision, autoRoutes, autoNotes, driverExperience, notes, photo} }`.
 
+## OfflineScout tarzı arayüz ve iş akışı (Faz 3)
+| Özellik | Dosya | Not |
+|---|---|---|
+| OLED tema (varsayılan) | `src/index.css` (`data-theme='oled'`) | #0F1115 zemin, #181B20 kart, #EF4444 / #3B82F6 ittifak, #10B981 birincil, #F59E0B uyarı. Eski 3 tema duruyor |
+| 4 sekmeli alt menü + alt sekmeler | `src/App.jsx` (`MAIN`) | Scout (Maç / Detaylı / Pit) · Sync/QR · Takımlar · Strateji (Picklist / İttifak / Simülatör) |
+| Cihaz rolü | `src/App.jsx` | 📝 Scouter: Scout + Sync (kendi maçları, QR). 🧠 Master: 4 sekme, sürekli tarayıcı, analiz |
+| Sıfır kaydırma maç ekranı | `src/components/MatchMode.jsx` | Üst: maç + saat + Auto/TeleOp/Endgame; orta: sayaç kartları; alt: Geri Al / Önceki / İleri-Bitir. 375×667'de dahi kaydırmasız. Süreler `MATCH_TIMING` |
+| Maç öncesi hızlı seçim | `MatchMode.jsx` → `PreMatch` | Yüklü FTCScout programından takımlar gelir (FTC: ittifak başına 2 robot) |
+| Yarım kalan maç koruması | `MatchMode.jsx` + mevcut taslak | Faz/saat `bb2.matchmode`'da; açılışta “Yarım kalan maç … Devam / Sil” |
+| Kompakt QR protokolü (BZ2) | `src/lib/compactProtocol.js` | `BZ2\|i:..\|t:19452\|m:Q12\|a:1,3,s\|tp:8,2,70,4\|eg:1,d\|tag:brownout` – sade maç ≈ 110–250 karakter |
+| Sürekli QR tarayıcı (Master) | `src/components/MasterScanner.jsx`, `src/lib/feedback.js` | Bip + titreşim + yeşil çerçeve; BZ2 ve BB1 okur; testte 6 QR ≈ 2,6 sn |
+| Takım profil kartı | `src/components/TeamProfileCard.jsx` | Fotoğraf, şasi, maç, ort. puan, yığılmış dönem çubuğu, etiket rozetleri, pit notları |
+| Picklist | `src/components/Picklist.jsx` | Ağırlıklı (%Auto/%TeleOp/%Endgame) otomatik sıralama, sürükle-bırak (dokunmatik dahil), ▲▼, Seçildi/Elendi; cihazda kalıcı |
+
 ## Dosyalar
 | | |
 |---|---|
