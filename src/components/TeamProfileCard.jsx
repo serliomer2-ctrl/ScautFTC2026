@@ -2,6 +2,14 @@ import React from 'react';
 import { labelOf } from '../schema.js';
 import { avgCycle } from './MatchExtras.jsx';
 import { f1 } from './TeamsView.jsx';
+import { PIT_ALERTS } from './PitScouting.jsx';
+import { DEAD_GAP, MATCH_END, TELE_START, teamActivity } from '../lib/telemetry.js';
+import { MATCH_TIMING } from './MatchMode.jsx';
+
+const ago = (iso) => {
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? 'şimdi' : m < 60 ? `${m} dk önce` : m < 1440 ? `${Math.round(m / 60)} sa önce` : `${Math.round(m / 1440)} gün önce`;
+};
 
 /**
  * OfflineScout tarzı takım profil kartı – mevcut takım detayının (TeamsView) ÜSTÜNE eklenir.
@@ -25,7 +33,7 @@ const PART = [
   ['endPts', 'Endgame', 'rgb(var(--warn))'],
 ];
 
-export default function TeamProfileCard({ t, pit }) {
+export default function TeamProfileCard({ t, pit, onToggleAlert }) {
   const p = pit?.pit;
   const counts = {};
   t.records.forEach((r) => (r.tags || []).forEach((g) => (counts[g] = (counts[g] || 0) + 1)));
@@ -93,7 +101,87 @@ export default function TeamProfileCard({ t, pit }) {
           {p?.autoNotes && <p className="rounded-xl bg-raised p-3 text-sm"><b>Otonom rotaları:</b> {p.autoNotes}</p>}
         </div>
       )}
-      {!badges.length && !p?.notes && <div className="pb-1" />}
+      {/* Canlı garaj durumu – tek dokunuşla aç/kapa (pit kaydına yazılır, senkronize olur) */}
+      <div className="grid gap-2 border-t border-line px-4 py-3">
+        <div className="text-sm font-bold text-muted">🛠 Canlı garaj durumu</div>
+        <div className="grid grid-cols-2 gap-2">
+          {PIT_ALERTS.map((a) => {
+            const cur = (p?.alerts || []).find((x) => x.id === a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                aria-pressed={!!cur}
+                disabled={!onToggleAlert}
+                onClick={() => onToggleAlert?.(t.num, a.id)}
+                className={`min-h-[52px] rounded-xl border-2 px-2 text-left text-sm font-bold active:scale-95 ${
+                  cur ? (a.tone === 'ok' ? 'border-ok bg-ok/15 text-ok' : a.tone === 'warn' ? 'border-warn bg-warn/15 text-warn' : 'border-bad bg-bad/15 text-bad') : 'border-line bg-raised text-muted'
+                }`}
+              >
+                {a.label}
+                {cur && <span className="block text-[10px] font-normal opacity-80">{ago(cur.at)}{cur.by ? ` · ${cur.by}` : ''}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Telemetry records={t.records} />
     </section>
+  );
+}
+
+/* ============================ TELEMETRİ ============================ */
+const T = MATCH_END; // maç toplam süresi (sn)
+const pctX = (sec) => `${Math.max(0, Math.min(100, (sec / T) * 100))}%`;
+const EV_COLOR = { auto_score: 'rgb(var(--alliance-blue))', teleop_score: 'rgb(var(--ok))', flower_done: 'rgb(var(--warn))', flower_fail: 'rgb(var(--bad))' };
+
+function Telemetry({ records }) {
+  const act = teamActivity(records);
+  return (
+    <div className="grid gap-2 border-t border-line px-4 py-3">
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm font-bold text-muted">⏱ Maç telemetrisi</span>
+        {act && (
+          <span className="text-sm">
+            Aktiflik <b className={act.avg >= 0.75 ? 'text-ok' : act.avg >= 0.5 ? 'text-warn' : 'text-bad'}>%{Math.round(act.avg * 100)}</b>
+          </span>
+        )}
+      </div>
+      {!act && <p className="text-xs text-muted">Zaman damgalı veri yok. Maç ekranında saat (⏱) çalışırken girilen skorlar burada zaman çizelgesi olarak görünür.</p>}
+      {act?.rows.map((r) => (
+        <div key={r.match} className="grid grid-cols-[44px_1fr_40px] items-center gap-2">
+          <span className="text-xs font-bold">{r.match}</span>
+          <div className="relative h-6 overflow-hidden rounded-md bg-raised" title={`${r.scores} TeleOp skoru · ölü süre ${Math.round(r.deadSec)} sn`}>
+            <div className="absolute inset-y-0 left-0 bg-blue-alliance/15" style={{ width: pctX(MATCH_TIMING.auto) }} />
+            <div className="absolute inset-y-0 bg-line/40" style={{ left: pctX(MATCH_TIMING.auto), width: pctX(TELE_START - MATCH_TIMING.auto) }} />
+            {r.dead.map(([a, b], i) => (
+              <div
+                key={i}
+                className="absolute inset-y-0"
+                style={{ left: pctX(a), width: pctX(b - a), background: 'repeating-linear-gradient(135deg, rgb(var(--bad) / .35) 0 4px, transparent 4px 8px)' }}
+              />
+            ))}
+            {r.events.map((e, i) => (
+              <div
+                key={i}
+                className="absolute inset-y-1 w-[3px] rounded-full"
+                style={{ left: pctX(e.t), background: EV_COLOR[e.a] || 'rgb(var(--bad))' }}
+                title={`${e.t} sn · ${e.a}`}
+              />
+            ))}
+          </div>
+          <span className={`text-right text-xs font-bold ${r.active >= 0.75 ? 'text-ok' : r.active >= 0.5 ? 'text-warn' : 'text-bad'}`}>%{Math.round(r.active * 100)}</span>
+        </div>
+      ))}
+      {act && (
+        <div className="flex flex-wrap gap-3 text-[11px] text-muted">
+          <span><span style={{ color: EV_COLOR.auto_score }}>▮</span> Oto skor</span>
+          <span><span style={{ color: EV_COLOR.teleop_score }}>▮</span> TeleOp skor</span>
+          <span><span style={{ color: EV_COLOR.flower_done }}>▮</span> Flower</span>
+          <span><span className="text-bad">▨</span> Ölü süre (&gt;{DEAD_GAP} sn skorsuz)</span>
+        </div>
+      )}
+    </div>
   );
 }

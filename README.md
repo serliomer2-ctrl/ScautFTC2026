@@ -81,6 +81,18 @@ Yeni kayıt alanları (eski kayıtlarda yoksa varsayılan kullanılır):
 | Takım profil kartı | `src/components/TeamProfileCard.jsx` | Fotoğraf, şasi, maç, ort. puan, yığılmış dönem çubuğu, etiket rozetleri, pit notları |
 | Picklist | `src/components/Picklist.jsx` | Ağırlıklı (%Auto/%TeleOp/%Endgame) otomatik sıralama, sürükle-bırak (dokunmatik dahil), ▲▼, Seçildi/Elendi; cihazda kalıcı |
 
+## Pro-Level Strateji & Telemetri (Faz 4)
+| Modül | Dosya | Not |
+|---|---|---|
+| İttifak Sinerji Motoru + What-If | `src/lib/synergy.js`, `src/components/WhatIf.jsx` (Strateji → İttifak) | Bölge türü `field.js` **etiketinden** (Hive / Loading Zone / Garden). Mavi kayıtlar 180° aynalanır. Çakışmada küçük katkının %12'si (+%5 başlangıç) düşülür |
+| Sesli pit notu + canlı garaj rozetleri | `src/components/MicButton.jsx`, `PitScouting.jsx`, `TeamProfileCard.jsx` | Web Speech API (TR/EN); desteklenmezse buton gizli. Rozetler `pit.alerts: [{id, at, by}]` |
+| Maç telemetrisi | `MatchMode.jsx` (kayıt), `src/lib/telemetry.js`, `TeamProfileCard.jsx` | `rec.timeline: [{t, a}]` yalnız maç saati çalışırken. Ölü süre = TeleOp'ta 20 sn'den uzun skorsuz aralık |
+| Drive Team brifingi | `src/components/Briefing.jsx` (Strateji → Brifing) | Sıradaki maç (programdan) veya elle 4 takım; tam ekran, otomatik aksiyon maddeleri |
+| Hızlı Metin Kodu | `src/lib/textcode.js`, `src/components/TextSync.jsx` (Sync) | `BBT1.P.…` ortak oda (sıkıştırılmış), `BBT1.E.…` özel oda (oda anahtarıyla AES-GCM). Kopyala / Paylaş (Bluetooth, Yakındaki Paylaşım) / .txt; BZ2 ve BB1 metinlerini de birleştirir |
+
+Geriye dönük uyumluluk: yeni alanlar (`timeline`, `pit.alerts`) eski kayıtlarda yoktur ve her yerde `|| []` ile okunur;
+şema sürümü değişmedi, eski uygulama sürümleri bilinmeyen alanları yok sayar.
+
 ## Dosyalar
 | | |
 |---|---|

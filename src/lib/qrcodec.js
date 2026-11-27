@@ -81,3 +81,16 @@ export async function decodeTransfer(parts) {
   const raw = body[0] === 'Z' ? await pipe(bytes, DecompressionStream) : bytes;
   return JSON.parse(new TextDecoder().decode(raw)).map((r) => mapKeys(r, REVERSE));
 }
+
+/* ---------- Faz 4: QR'sız metin aktarımı için tek parça gövde (aynı sıkıştırma) ---------- */
+/** Kayıtları tek bir sıkıştırılmış metin gövdesine çevirir ('Z…' veya 'J…') */
+export async function encodeBlob(records) {
+  const raw = new TextEncoder().encode(JSON.stringify(records.map((r) => mapKeys(r, KEYMAP))));
+  return canCompress() ? 'Z' + toB64url(await pipe(raw, CompressionStream)) : 'J' + toB64url(raw);
+}
+/** encodeBlob çıktısını kayıt listesine geri çevirir */
+export async function decodeBlob(body) {
+  const bytes = fromB64url(body.slice(1));
+  const raw = body[0] === 'Z' ? await pipe(bytes, DecompressionStream) : bytes;
+  return JSON.parse(new TextDecoder().decode(raw)).map((r) => mapKeys(r, REVERSE));
+}

@@ -46,6 +46,17 @@ function clockState(startedAt) {
   if (t < end) return { phase: 'endgame', left: end - t, label: 'ENDGAME' };
   return { phase: 'endgame', left: 0, label: 'BİTTİ' };
 }
+/** Telemetri: maç saati çalışıyorsa olayın saniyesi, değilse null */
+const stampOf = (state) => (state.startedAt ? +((Date.now() - state.startedAt) / 1000).toFixed(1) : null);
+/** rec.timeline'a olay ekler (saat kapalıysa dokunmaz) */
+const withEvent = (r, t, a) => (t == null ? r : { ...r, timeline: [...(r.timeline || []), { t, a }] });
+/** Azaltmada o türün son olayını geri alır */
+const dropLast = (r, a) => {
+  const tl = r.timeline || [];
+  const i = tl.map((e) => e.a).lastIndexOf(a);
+  return i < 0 ? r : { ...r, timeline: [...tl.slice(0, i), ...tl.slice(i + 1)] };
+};
+
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /* ============================ MAÇ ÖNCESİ ============================ */
@@ -221,9 +232,9 @@ export default function MatchScreen({ rec, update, patch, undo, histLen, state, 
 
       {/* ORTA: faz kartları */}
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {state.phase === 'auto' && <AutoPhase rec={rec} update={update} />}
+        {state.phase === 'auto' && <AutoPhase rec={rec} update={update} patch={patch} stamp={() => stampOf(state)} />}
         {state.phase === 'teleop' && <TeleopPhase rec={rec} patch={patch} update={update} state={state} setState={setState} />}
-        {state.phase === 'endgame' && <EndgamePhase rec={rec} update={update} />}
+        {state.phase === 'endgame' && <EndgamePhase rec={rec} update={update} patch={patch} stamp={() => stampOf(state)} />}
       </div>
 
       {/* ALT: Geri Al + gezinme */}
@@ -287,7 +298,7 @@ const YN = [
   { value: false, label: 'Hayır', tone: 'bg-bad text-white' },
 ];
 
-function AutoPhase({ rec, update }) {
+function AutoPhase({ rec, update, patch, stamp }) {
   const a = rec.auto;
   return (
     <div className="grid grid-cols-2 gap-1.5 [@media(min-height:720px)]:gap-2">
@@ -295,10 +306,12 @@ function AutoPhase({ rec, update }) {
         big
         label="Otonom Tip"
         value={a.tipCount}
-        onChange={(v) => {
-          update('auto', 'tipCount', v);
-          if (v > 0 && a.hasAuto !== true) update('auto', 'hasAuto', true);
-        }}
+        onChange={(v) =>
+          patch((r) => {
+            const next = { ...r, auto: { ...r.auto, tipCount: v, hasAuto: v > 0 ? true : r.auto.hasAuto } };
+            return v > r.auto.tipCount ? withEvent(next, stamp(), 'auto_score') : dropLast(next, 'auto_score');
+          })
+        }
       />
       <Choice label="Otonom var mı?" options={YN} value={a.hasAuto} onChange={(v) => update('auto', 'hasAuto', v)} />
       <Choice label="Yardımsız Tip" options={YN} value={a.soloTip} onChange={(v) => update('auto', 'soloTip', v)} />
@@ -353,10 +366,13 @@ function TeleopPhase({ rec, patch, update, state, setState }) {
     const now = Date.now();
     if (v > t.tipCount) {
       const sec = state.lastScoreAt ? +((now - state.lastScoreAt) / 1000).toFixed(1) : null;
-      patch((r) => ({ ...r, teleop: { ...r.teleop, tipCount: v }, cycles: sec && sec < 90 ? [...(r.cycles || []), sec] : r.cycles || [] }));
+      const t = stampOf(state);
+      patch((r) =>
+        withEvent({ ...r, teleop: { ...r.teleop, tipCount: v }, cycles: sec && sec < 90 ? [...(r.cycles || []), sec] : r.cycles || [] }, t, 'teleop_score'),
+      );
       setState({ ...state, lastScoreAt: now });
     } else {
-      update('teleop', 'tipCount', v);
+      patch((r) => dropLast({ ...r, teleop: { ...r.teleop, tipCount: v } }, 'teleop_score'));
     }
   }
 
@@ -383,7 +399,7 @@ function TeleopPhase({ rec, patch, update, state, setState }) {
   );
 }
 
-function EndgamePhase({ rec, update }) {
+function EndgamePhase({ rec, update, patch, stamp }) {
   const e = rec.endgame;
   const tags = rec.tags || [];
   return (
@@ -408,7 +424,12 @@ function EndgamePhase({ rec, update }) {
             { value: 'not_attempted', label: 'Denemedi', tone: 'bg-muted text-bg' },
           ]}
           value={e.flowerResult}
-          onChange={(v) => update('endgame', 'flowerResult', v)}
+          onChange={(v) =>
+            patch((r) => {
+              const next = { ...r, endgame: { ...r.endgame, flowerResult: v } };
+              return v === 'done' ? withEvent(next, stamp(), 'flower_done') : v === 'failed' ? withEvent(next, stamp(), 'flower_fail') : next;
+            })
+          }
         />
       </div>
       <div className="col-span-2 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-surface p-1.5 [@media(min-height:720px)]:p-2">
@@ -420,7 +441,12 @@ function EndgamePhase({ rec, update }) {
               key={t.id}
               type="button"
               aria-pressed={on}
-              onClick={() => update(null, 'tags', on ? tags.filter((x) => x !== t.id) : [...tags, t.id])}
+              onClick={() =>
+                patch((r) => {
+                  const cur = r.tags || [];
+                  return on ? { ...r, tags: cur.filter((x) => x !== t.id) } : withEvent({ ...r, tags: [...cur, t.id] }, stamp(), `tag:${t.id}`);
+                })
+              }
               className={`min-h-[44px] rounded-xl px-1 text-xs font-bold active:scale-95 ${on ? (t.tone === 'ok' ? 'bg-ok text-black' : 'bg-bad text-white') : 'bg-raised'}`}
             >
               {t.label}

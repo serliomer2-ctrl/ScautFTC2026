@@ -134,13 +134,26 @@ async function proxySync() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let running = null;
+let again = false;
 
 /**
  * Çek + (anahtar varsa) kuyruğu gönder. Aynı anda tek senkronizasyon çalışır.
  * @returns {Promise<{pushed:number, needsToken?:boolean}>}
  */
 export function syncNow() {
-  if (!running) running = doSync().finally(() => (running = null));
+  if (running) {
+    // Senkronizasyon sürerken yeni kayıt geldiyse, bitince bir tur daha at (45 sn beklemesin)
+    again = true;
+    return running;
+  }
+  running = (async () => {
+    let res;
+    do {
+      again = false;
+      res = await doSync();
+    } while (again);
+    return res;
+  })().finally(() => (running = null));
   return running;
 }
 

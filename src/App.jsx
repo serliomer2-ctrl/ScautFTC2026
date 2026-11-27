@@ -8,7 +8,7 @@ import { Toast } from './components/ui.jsx';
 import MatchExtras from './components/MatchExtras.jsx';
 import SaveConfirm from './components/SaveConfirm.jsx';
 import QRTransfer from './components/QRTransfer.jsx';
-import PitScouting, { cleanPit } from './components/PitScouting.jsx';
+import PitScouting, { cleanPit, newPit, pitId, toggleAlert } from './components/PitScouting.jsx';
 import HeadToHead from './components/HeadToHead.jsx';
 import EventSchedule from './components/EventSchedule.jsx';
 import MatchScreen, { PreMatch, loadMatchMode, saveMatchMode } from './components/MatchMode.jsx';
@@ -16,6 +16,9 @@ import MasterScanner from './components/MasterScanner.jsx';
 import ScouterQRSend, { MatchQR } from './components/CompactQR.jsx';
 import TeamProfileCard from './components/TeamProfileCard.jsx';
 import Picklist from './components/Picklist.jsx';
+import WhatIf from './components/WhatIf.jsx';
+import Briefing from './components/Briefing.jsx';
+import TextSync from './components/TextSync.jsx';
 import { exportPitCSV } from './lib/exportExtra.js';
 import { DEFAULT_SCORING, PROXY_URL, SHOW_SYNC_SETTINGS, SYNC_INTERVAL_MS } from './config.js';
 import { emptyRecord, migrate, validate } from './schema.js';
@@ -41,7 +44,7 @@ const MAIN = [
   { id: 'scout', icon: '📝', label: 'Scout', subs: [['match', '⚡ Maç'], ['form', '📝 Detaylı'], ['pit', '🔧 Pit']] },
   { id: 'sync', icon: '📡', label: 'Sync / QR', subs: [['list', 'Sync']] },
   { id: 'teams', icon: '🏆', label: 'Takımlar', subs: [['teams', 'Takımlar']], master: true },
-  { id: 'strategy', icon: '🧠', label: 'Strateji', subs: [['picklist', '📋 Picklist'], ['alliance', '🤝 İttifak'], ['predict', '🎲 Simülatör']], master: true },
+  { id: 'strategy', icon: '🧠', label: 'Strateji', subs: [['brief', '📣 Brifing'], ['picklist', '📋 Picklist'], ['alliance', '🤝 İttifak'], ['predict', '🎲 Simülatör']], master: true },
 ];
 const mainOf = (leaf) => MAIN.find((m) => m.subs.some(([id]) => id === leaf)) || MAIN[0];
 
@@ -346,6 +349,17 @@ function Room({ session, prefs, setPrefs, onLeave }) {
     return sum;
   };
 
+  /** Takım profilinden canlı garaj rozeti aç/kapa – pit kaydı yoksa oluşturur */
+  async function togglePitAlert(num, alertId) {
+    const ex = pitByTeam[String(num)];
+    const base = ex ? cleanPit(ex) : { ...newPit(num, stats.find((t) => t.num === String(num))?.name || ''), id: await pitId(session, num) };
+    const now = new Date().toISOString();
+    const next = { ...base, kind: 'pit', roomId: session.roomId, scouter: base.scouter || session.scouter, createdAt: base.createdAt || now, updatedAt: now };
+    next.pit = { ...next.pit, alerts: toggleAlert(next.pit.alerts, alertId, session.scouter) };
+    await pushRecord(next);
+    runSync();
+  }
+
   async function savePit(p) {
     await pushRecord(p);
     flash(`#${p.team.number} pit kaydı kaydedildi ✓`);
@@ -580,15 +594,18 @@ function Room({ session, prefs, setPrefs, onLeave }) {
               )}
             </div>
             <QRTransfer matchRecords={records} pitRecords={pitRecords} scouter={session.scouter} onImport={importScanned} />
+            <TextSync matchRecords={records} pitRecords={pitRecords} session={session} onImport={importScanned} />
             {role === 'scouter' && <p className="-mb-2 text-sm font-semibold text-muted">Benim maçlarım</p>}
             <RecordList records={role === 'master' ? records : records.filter((r) => r.scouter === session.scouter)} onEdit={edit} onDelete={remove} filter={filter} setFilter={setFilter} />
           </div>
         )}
 
         {tab === 'teams' && selectedTeam && stats.some((t) => t.num === selectedTeam) && (
-          <TeamProfileCard t={stats.find((t) => t.num === selectedTeam)} pit={pitByTeam[selectedTeam]} />
+          <TeamProfileCard t={stats.find((t) => t.num === selectedTeam)} pit={pitByTeam[selectedTeam]} onToggleAlert={togglePitAlert} />
         )}
         {tab === 'teams' && <TeamsView stats={stats} selected={selectedTeam} setSelected={setSelectedTeam} />}
+
+        {tab === 'brief' && <Briefing stats={stats} pitByTeam={pitByTeam} myTeam={prefs.myTeam} />}
 
         {tab === 'picklist' && <Picklist stats={stats} roomId={session.roomId} myTeam={prefs.myTeam} pitByTeam={pitByTeam} />}
 
@@ -606,6 +623,11 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         {tab === 'alliance' && (
           <div className="mt-4">
             <HeadToHead stats={stats} pitByTeam={pitByTeam} />
+          </div>
+        )}
+        {tab === 'alliance' && (
+          <div className="mt-4">
+            <WhatIf stats={stats} myTeam={prefs.myTeam} />
           </div>
         )}
 

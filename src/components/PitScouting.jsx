@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { OPTIONS, labelOf } from '../schema.js';
 import { compressImage } from '../lib/image.js';
 import { Counter, Field, Section, Segmented, YesNoRow } from './ui.jsx';
+import MicButton from './MicButton.jsx';
 
 /**
  * Garaj (Pit) incelemesi
@@ -13,8 +14,21 @@ import { Counter, Field, Section, Segmented, YesNoRow } from './ui.jsx';
  *   { id, kind:'pit', roomId, scouter, createdAt, updatedAt,
  *     team: { number, name },
  *     pit:  { drivetrain, drivetrainOther, intake, driveMotors, totalMotors, autoRoutes, autoNotes,
- *             driverExperience, odometry, vision, notes, photo (JPEG data URL, ≤ ~13 KB) } }
+ *             driverExperience, odometry, vision, notes, photo (JPEG data URL, ≤ ~13 KB),
+ *             alerts: [{ id, at, by }] } }     ← Faz 4: canlı garaj durum rozetleri (eski kayıtlarda yok → [])
  */
+/** Canlı garaj durum rozetleri – takım profilinden ve pit formundan tek dokunuşla açılıp kapanır */
+export const PIT_ALERTS = [
+  { id: 'spares', label: '🧰 Yedek Parçası Bol', tone: 'ok' },
+  { id: 'newCode', label: '💾 Yeni Kod Yüklendi', tone: 'warn' },
+  { id: 'motorHeat', label: '🌡️ Motor Isınma Sorunu', tone: 'bad' },
+  { id: 'maintenance', label: '🔧 Mekanik Bakımda', tone: 'bad' },
+];
+
+/** Rozet listesini değiştirir (varsa kaldırır, yoksa zaman damgasıyla ekler) */
+export const toggleAlert = (alerts = [], id, by) =>
+  alerts.some((a) => a.id === id) ? alerts.filter((a) => a.id !== id) : [...alerts, { id, at: new Date().toISOString(), by }];
+
 export const EXPERIENCE = [
   { value: 'rookie', label: 'İlk sezon' },
   { value: '1-2', label: '1–2 sezon' },
@@ -23,8 +37,11 @@ export const EXPERIENCE = [
 
 const emptyPit = () => ({
   drivetrain: null, drivetrainOther: '', intake: null, driveMotors: 4, totalMotors: 8,
-  autoRoutes: 0, autoNotes: '', driverExperience: null, odometry: null, vision: null, notes: '', photo: null,
+  autoRoutes: 0, autoNotes: '', driverExperience: null, odometry: null, vision: null, notes: '', photo: null, alerts: [],
 });
+
+/** Henüz pit kaydı olmayan takım için boş kayıt (durum rozeti ilk kez eklenirken kullanılır) */
+export const newPit = (number, name = '') => ({ team: { number: String(number), name }, pit: emptyPit() });
 
 export async function pitId(session, teamNumber) {
   if (session.type !== 'private') return `pit:${teamNumber}`;
@@ -90,10 +107,27 @@ export default function PitScouting({ pitRecords, teamNames, session, scouter, o
               {p._pending ? '⏳ ' : ''}#{p.team.number} <span className="font-normal text-muted">{p.team.name}</span>
             </div>
             <SpecChips p={p.pit} />
+            <AlertChips alerts={p.pit.alerts} />
             <div className="mt-1 text-xs text-muted">{p.scouter} · {p.updatedAt?.slice(0, 16).replace('T', ' ')}</div>
           </div>
         </button>
       ))}
+    </div>
+  );
+}
+
+export function AlertChips({ alerts }) {
+  if (!alerts?.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {alerts.map((a) => {
+        const def = PIT_ALERTS.find((x) => x.id === a.id);
+        return (
+          <span key={a.id} className={`rounded-full px-2 py-0.5 text-xs font-bold ${def?.tone === 'ok' ? 'bg-ok/20 text-ok' : def?.tone === 'warn' ? 'bg-warn/20 text-warn' : 'bg-bad/20 text-bad'}`}>
+            {def?.label || a.id}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -126,6 +160,8 @@ function PitForm({ initial, teamNames, existing, onCancel, onSave, flash }) {
   const p = rec.pit;
   const set = (k, v) => setRec((r) => ({ ...r, pit: { ...r.pit, [k]: v } }));
   const setTeam = (k, v) => setRec((r) => ({ ...r, team: { ...r.team, [k]: v } }));
+  // Sesli not: kesinleşen cümleyi mevcut metnin sonuna ekler
+  const appendTo = (k) => (text) => setRec((r) => ({ ...r, pit: { ...r.pit, [k]: r.pit[k] ? `${r.pit[k].replace(/\s+$/, '')} ${text}` : text } }));
 
   async function onPhoto(e) {
     const file = e.target.files?.[0];
@@ -226,12 +262,32 @@ function PitForm({ initial, teamNames, existing, onCancel, onSave, flash }) {
         </Field>
         <Field label="Otonom rotaları (kısaca)">
           <textarea className="input min-h-[80px]" placeholder="örn. Sol: 3 polen + park, Sağ: 2 nektar…" value={p.autoNotes} onChange={(e) => set('autoNotes', e.target.value)} />
+          <MicButton onAppend={appendTo('autoNotes')} />
         </Field>
         <Field label="Sürücü deneyimi">
           <Segmented options={EXPERIENCE} value={p.driverExperience} onChange={(v) => set('driverExperience', v)} />
         </Field>
         <Field label="Pit notları">
           <textarea className="input min-h-[96px]" placeholder="Güçlü/zayıf yönler, yedek parça, takım stratejisi…" value={p.notes} onChange={(e) => set('notes', e.target.value)} />
+          <MicButton onAppend={appendTo('notes')} />
+        </Field>
+        <Field label="Canlı garaj durumu">
+          <div className="grid grid-cols-2 gap-2">
+            {PIT_ALERTS.map((a) => {
+              const on = (p.alerts || []).some((x) => x.id === a.id);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => set('alerts', toggleAlert(p.alerts, a.id, rec.scouter))}
+                  className={`btn min-h-[52px] border-2 px-2 text-sm ${on ? (a.tone === 'ok' ? 'border-ok bg-ok text-black' : a.tone === 'warn' ? 'border-warn bg-warn text-black' : 'border-bad bg-bad text-white') : 'border-line bg-raised'}`}
+                >
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
         </Field>
       </Section>
 
