@@ -15,10 +15,10 @@
 export const FIELD_IMAGE = 'field.png';
 
 export const FIELD_ZONES = [
-  { id: 'hive-blue', label: 'Hive (M)', x: 0.655, y: 0.0, w: 0.19, h: 0.11, tone: 'blue' },
-  { id: 'hive-red', label: 'Hive (K)', x: 0.155, y: 0.89, w: 0.19, h: 0.11, tone: 'red' },
-  { id: 'flower-1', label: 'Flower (M)', x: 0.35, y: 0.32, w: 0.34, h: 0.175, tone: 'blue' },
-  { id: 'flower-2', label: 'Flower (K)', x: 0.31, y: 0.505, w: 0.34, h: 0.175, tone: 'red' },
+  { id: 'hive-blue', label: 'Loading Zone (M)', x: 0.655, y: 0.0, w: 0.19, h: 0.11, tone: 'blue' },
+  { id: 'hive-red', label: 'Loading Zone (K)', x: 0.155, y: 0.89, w: 0.19, h: 0.11, tone: 'red' },
+  { id: 'flower-1', label: 'Hive (M)', x: 0.35, y: 0.32, w: 0.34, h: 0.175, tone: 'blue' },
+  { id: 'flower-2', label: 'Hive (K)', x: 0.31, y: 0.505, w: 0.34, h: 0.175, tone: 'red' },
   { id: 'load-blue', label: 'Yükleme (M)', x: 0.0, y: 0.0, w: 0.07, h: 0.18, tone: 'blue' },
   { id: 'load-red', label: 'Yükleme (K)', x: 0.93, y: 0.82, w: 0.07, h: 0.18, tone: 'red' },
   { id: 'garden', label: 'Garden', x: 0.29, y: 0.0, w: 0.09, h: 0.08, tone: 'neutral' }, // üst
