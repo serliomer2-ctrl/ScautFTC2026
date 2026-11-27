@@ -43,9 +43,9 @@ export default function Login({ onEnter, defaultScouter = '' }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-4 py-8">
       <div className="text-center">
-        <div className="text-6xl" aria-hidden>🐝</div>
-        <h1 className="mt-2 text-3xl font-extrabold">Biobuzz Scout</h1>
-        <p className="text-muted">FTC 2026 · Scouting & Strateji</p>
+        <img src="./logo.webp" alt="Qubitrobotics #37677 logosu" className="mx-auto h-28 w-28 rounded-3xl shadow-lg" />
+        <h1 className="mt-3 text-3xl font-extrabold">Biobuzz Scout</h1>
+        <p className="text-muted">Qubitrobotics · #37677 · FTC 2026</p>
       </div>
 
       <form onSubmit={submit} className="card grid gap-4">

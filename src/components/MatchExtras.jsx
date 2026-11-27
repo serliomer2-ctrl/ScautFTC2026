@@ -83,7 +83,18 @@ export function FieldMap({ value, alliance, onChange, readOnly = false, size = '
         aria-label="Saha haritası – işaretlemek için dokunun"
       >
         {FIELD_IMAGE ? (
-          <image href={`./${FIELD_IMAGE}`} x="0" y="0" width="100" height="100" preserveAspectRatio="none" />
+          <>
+            <image href={`./${FIELD_IMAGE}`} x="0" y="0" width="100" height="100" preserveAspectRatio="none" />
+            {/* Dokunma bölgeleri görselin üstünde kesikli çerçeve + küçük etiket */}
+            {FIELD_ZONES.map((z, i) => (
+              <g key={i} pointerEvents="none">
+                <rect x={z.x * 100} y={z.y * 100} width={z.w * 100} height={z.h * 100} rx="1" fill="none" stroke={z.tone === 'neutral' ? '#f59e0b' : '#fff'} strokeOpacity="0.55" strokeWidth="0.4" strokeDasharray="1.2 1" />
+                {z.w > 0.15 && (
+                  <text x={(z.x + z.w / 2) * 100} y={(z.y + z.h / 2) * 100 + 1.2} textAnchor="middle" fontSize="3.2" fontWeight="bold" fill="#fff" stroke="#000" strokeWidth="0.5" paintOrder="stroke">{z.label}</text>
+                )}
+              </g>
+            ))}
+          </>
         ) : (
           <>
             {[1, 2, 3, 4, 5].map((i) => (

@@ -69,6 +69,7 @@ const ago = (iso) => {
 export default function App() {
   const [prefs, setPrefs] = useState(() => {
     const p = { theme: 'oled', scouter: '', scoring: DEFAULT_SCORING, myTeam: '', role: 'scouter', ...loadPrefs() };
+    if (!p.myTeam) p.myTeam = '37677'; // Qubitrobotics – İttifak/Picklist/Program vurgusu için
     // Tek seferlik: yeni OLED tasarımına geçiş (kullanıcı sonra istediği temaya dönebilir)
     if (!p.uiV) Object.assign(p, { theme: 'oled', uiV: 3 });
     return p;
@@ -427,7 +428,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
 
       <header className="sticky top-0 z-30 -mx-4 border-b border-line bg-bg/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
         <div className="flex items-center gap-2">
-          <span className="text-2xl" aria-hidden>🐝</span>
+          <img src="./logo.webp" alt="Qubitrobotics logosu" className="h-10 w-10 shrink-0 rounded-xl" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-extrabold leading-tight sm:text-lg">
               {session.type === 'private' ? '🔒' : '🌐'} {session.roomName}
