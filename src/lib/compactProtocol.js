@@ -5,6 +5,7 @@
  *
  * Alanlar (boş / varsayılan olanlar hiç yazılmaz):
  *   i   kayıt id'si (UUID → 22 karakter base64url)        u,c  güncelleme/oluşturma zamanı (epoch sn, base36)
+ *   si  gözlemci hesap id'si (Faz 6, görev ilerlemesi için)
  *   s   gözlemci   t takım no   n takım adı   m maç no   al ittifak r|b
  *   a   otonom: var,tip,başarı,başlangıç,kaynak,yardımsız,odometri,vision,rota
  *   tp  teleop: tip,taşıma,isabet,sürücü,otoHizalama,asistan
@@ -68,6 +69,7 @@ export function encodeMatch(r) {
   put('u', ts(r.updatedAt));
   if (r.createdAt && r.createdAt !== r.updatedAt) put('c', ts(r.createdAt));
   put('s', esc(r.scouter || ''));
+  put('si', esc(r.scouterId || ''));
   put('t', r.match.teamNumber);
   put('n', esc(r.match.teamName || ''));
   put('m', esc(r.match.matchNumber));
@@ -111,6 +113,7 @@ export async function decodeMatch(text) {
   r.updatedAt = unts(f.u) || new Date().toISOString();
   r.createdAt = unts(f.c) || r.updatedAt;
   r.scouter = unesc(f.s || '');
+  if (f.si) r.scouterId = unesc(f.si);
   Object.assign(r.match, { teamNumber: f.t, teamName: unesc(f.n || ''), matchNumber: unesc(f.m || ''), alliance: dec('alliance', f.al), notes: unesc(f.no || '') });
   const a = (f.a || '').split(',');
   Object.assign(r.auto, {

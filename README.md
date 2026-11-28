@@ -102,6 +102,21 @@ Geriye dönük uyumluluk: yeni alanlar (`timeline`, `pit.alerts`) eski kayıtlar
 | Çift gözlem doğrulama | `src/lib/consensus.js`, `src/components/ConsensusPanel.jsx` (Master → Sync) | Aynı maç+takım, farklı gözlemci. Uyum ≥%90 doğrulanmış; altı: Ortalamasını Al / 1. / 2. kaydı seç. Analizler grupları tek kayıt sayar. QR/metin içe aktarmada yalnız **aynı gözlemcinin** eski kaydı değiştirilir |
 | Saha ergonomisi | `MatchMode.jsx`, `App.jsx` (⚙ Ayarlar) | Ekranı uyanık tut (Wake Lock, desteklenmezse sessiz), Sağ/Sol el düzeni (+ butonları, büyük sayaç, İleri) |
 
+## Kimlik, Mentör Görevlendirme ve Takım Operasyonları (Faz 6)
+| Modül | Dosya | Not |
+|---|---|---|
+| Üye listesi (GitHub) | `public/team-members.json` | `id`, `adSoyad`, `rol` (mentor/member), `gitHubKullaniciAdi` + takım davet kodu hash'i. **Rol yalnızca bu dosyadan** gelir; düzenlemek için GitHub'da dosyayı değiştirin (id'leri değiştirmeyin) |
+| Giriş / Kayıt | `src/lib/auth.js`, `src/components/AuthScreen.jsx` | Kayıt: listede olmak + davet kodu + PIN. PIN'ler PBKDF2-SHA256 (150k, tuzlu) hash olarak sistem odasında (`pub:team-accounts`) senkronize edilir; düz PIN hiçbir yerde yok. Oturum cihazda kalır (internetsiz geçerli). Mentör PIN sıfırlayabilir |
+| Gözlemci adı | `App.jsx`, `Login.jsx` | Hesaptan otomatik ve kilitli; yeni kayıtlara `scouter`, `scouterId`, `scouterRole` yazılır. Eski kayıtların adları değişmez; görevlerde id yoksa adla eşleşir |
+| Görevler | `src/lib/tasks.js`, `src/components/Tasks.jsx` (✅ Görevler) | Maç izleme (aralık + istasyon), pit (takımlar + fotoğraf), özel görev; son teslim + öncelik. Maç/pit görevleri **kayıtlardan otomatik** tamamlanır. Bekleyen / Devam Eden / Tamamlanan |
+| Mentör paneli | `Tasks.jsx` | Görev ata, canlı ilerleme (gecikenler kırmızı), üyeler (hesap durumu, PIN sıfırlama, davet kodu üretme) |
+| Devret, yorgunluk, rozetler | `Tasks.jsx`, `tasks.js` | Görevi üyeye / ortak havuza devret, havuzdan üstlen; ardışık ≥4 maç uyarısı (onaysız atanamaz); katkı puanı, seri, Keskin Göz / Pit Uzmanı / 5'te 5 Seri / Maratoncu |
+| Çevrimdışı görev senkronu | mevcut kuyruk + QR (BB1) + Hızlı Metin Kodu | Görevler `kind: 'task'` oda kaydıdır; aynı senkronizasyon / şifreleme / QR / metin koduyla taşınır |
+
+**Güvenlik sınırı:** sunucusuz (statik) bir uygulamada giriş, istemci tarafında yapılan bir erişim kontrolüdür: paylaşılan tablette
+başkası adına kayıt girmeyi ve yetkisiz kişilerin hesap açmasını engeller; uygulama koduna veya veri deposuna erişebilen teknik
+birine karşı tam koruma değildir. 6+ karakterli PIN önerilir.
+
 ## Dosyalar
 | | |
 |---|---|

@@ -4,7 +4,7 @@ import { loadRepo, loadToken, pullOnly, saveRepo, saveToken, testConnection } fr
 import { Field, Segmented } from './ui.jsx';
 import { SHOW_SYNC_SETTINGS } from '../config.js';
 
-export default function Login({ onEnter, defaultScouter = '' }) {
+export default function Login({ onEnter, defaultScouter = '', lockedScouter = false }) {
   const [scouter, setScouter] = useState(defaultScouter);
   const [mode, setMode] = useState('public');
   const [privMode, setPrivMode] = useState('join');
@@ -19,7 +19,8 @@ export default function Login({ onEnter, defaultScouter = '' }) {
     pullOnly().then(() => setRooms(knownRooms())).catch(() => {});
   }, []);
 
-  const publicRooms = Object.values(rooms).filter((r) => r.type === 'public');
+  // Sistem odaları (takım hesapları) listede gösterilmez
+  const publicRooms = Object.values(rooms).filter((r) => r.type === 'public' && r.id !== 'pub:team-accounts');
 
   async function submit(e) {
     e.preventDefault();
@@ -50,7 +51,15 @@ export default function Login({ onEnter, defaultScouter = '' }) {
 
       <form onSubmit={submit} className="card grid gap-4">
         <Field label="Gözlemci (Scouter) Adı">
-          <input className="input" value={scouter} onChange={(e) => setScouter(e.target.value)} placeholder="örn. Ayşe" autoComplete="nickname" />
+          <input
+            className={`input ${lockedScouter ? 'opacity-80' : ''}`}
+            value={scouter}
+            readOnly={lockedScouter}
+            onChange={(e) => setScouter(e.target.value)}
+            placeholder="örn. Ayşe"
+            autoComplete="nickname"
+          />
+          {lockedScouter && <span className="mt-1 block text-xs text-muted">🔒 Giriş yapılan hesaptan otomatik</span>}
         </Field>
 
         <Segmented

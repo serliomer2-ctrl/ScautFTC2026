@@ -1,0 +1,57 @@
+{
+  "_aciklama": "Takım üye listesi. Yalnızca buradaki kişiler kayıt olabilir. rol: mentor | member. id değiştirilmemeli (kayıtlara bağlıdır). Yeni üye eklemek için satır ekleyin; davet kodunu değiştirmek için uygulamadaki Mentör Paneli → Üyeler → Davet kodu oluştur çıktısını inviteCode alanına yapıştırın.",
+  "team": {
+    "name": "Qubitrobotics",
+    "number": "37677"
+  },
+  "inviteCode": {
+    "alg": "PBKDF2-SHA256",
+    "iterations": 150000,
+    "salt": "ystvJkBbJTCbicitUjKdHQ==",
+    "hash": "AhPHA5muRnuyCcjFZs6wAbP3VGXHxnsFP8osLSCcUq0="
+  },
+  "members": [
+    {
+      "id": "mentor-1",
+      "adSoyad": "Mentör 1",
+      "rol": "mentor",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-1",
+      "adSoyad": "Üye 1",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-2",
+      "adSoyad": "Üye 2",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-3",
+      "adSoyad": "Üye 3",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-4",
+      "adSoyad": "Üye 4",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-5",
+      "adSoyad": "Üye 5",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    },
+    {
+      "id": "uye-6",
+      "adSoyad": "Üye 6",
+      "rol": "member",
+      "gitHubKullaniciAdi": ""
+    }
+  ]
+}

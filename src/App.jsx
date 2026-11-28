@@ -23,6 +23,11 @@ import Gallery from './components/Gallery.jsx';
 import ConsensusPanel from './components/ConsensusPanel.jsx';
 import Report from './components/Report.jsx';
 import { averageRecords, resolvedForStats } from './lib/consensus.js';
+import AuthScreen from './components/AuthScreen.jsx';
+import TasksHub from './components/Tasks.jsx';
+import { cachedRoster, loadAuth, loadRoster, logout as authLogout, refreshAuth, resetAccount } from './lib/auth.js';
+import { taskProgress } from './lib/tasks.js';
+import { cachedEvent } from './lib/ftcscout.js';
 import { exportPitCSV } from './lib/exportExtra.js';
 import { DEFAULT_SCORING, PROXY_URL, SHOW_SYNC_SETTINGS, SYNC_INTERVAL_MS } from './config.js';
 import { emptyRecord, migrate, validate } from './schema.js';
@@ -46,6 +51,7 @@ const THEMES = [
  */
 const MAIN = [
   { id: 'scout', icon: '📝', label: 'Scout', subs: [['match', '⚡ Maç'], ['form', '📝 Detaylı'], ['pit', '🔧 Pit']] },
+  { id: 'tasks', icon: '✅', label: 'Görevler', subs: [['tasks', 'Görevler']] },
   { id: 'sync', icon: '📡', label: 'Sync / QR', subs: [['list', 'Sync']] },
   { id: 'teams', icon: '🏆', label: 'Takımlar', subs: [['teams', 'Takımlar']], master: true },
   { id: 'strategy', icon: '🧠', label: 'Strateji', subs: [['brief', '📣 Brifing'], ['picklist', '📋 Liste'], ['alliance', '🤝 İttifak'], ['predict', '🎲 Simül.'], ['report', '📄 Rapor']], master: true },
@@ -85,6 +91,25 @@ export default function App() {
     return p;
   });
   const [session, setSession] = useState(loadSession);
+  // Faz 6: kimlik. Oturum cihazda kalır (internetsiz de geçerli); liste güncellenince ad/rol tazelenir.
+  const [auth, setAuth] = useState(() => refreshAuth(loadAuth(), cachedRoster()));
+  const [roster, setRoster] = useState(cachedRoster);
+  useEffect(() => {
+    loadRoster()
+      .then((r) => {
+        setRoster(r);
+        setAuth((a) => refreshAuth(a, r));
+      })
+      .catch(() => {});
+  }, []);
+  // Gözlemci adı artık hesaptan gelir: açık oda oturumundaki ad hesap adıyla eşitlenir (eski kayıtlara dokunulmaz)
+  useEffect(() => {
+    if (auth && session && session.scouter !== auth.adSoyad) {
+      const s = { ...session, scouter: auth.adSoyad };
+      saveSession(s);
+      setSession(s);
+    }
+  }, [auth, session]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
@@ -103,14 +128,23 @@ export default function App() {
     setSession(null);
   };
 
-  if (!session) return <Login onEnter={enter} defaultScouter={prefs.scouter} />;
-  return <Room key={session.roomId} session={session} prefs={prefs} setPrefs={setPrefs} onLeave={leave} />;
+  const signOut = () => {
+    authLogout();
+    setAuth(null);
+    leave();
+  };
+
+  if (!auth) return <AuthScreen onAuth={(a) => (setAuth(a), loadRoster().then(setRoster, () => {}))} />;
+  if (!session) return <Login onEnter={enter} defaultScouter={auth.adSoyad} lockedScouter />;
+  return <Room key={session.roomId} session={session} prefs={prefs} setPrefs={setPrefs} onLeave={leave} auth={auth} roster={roster} onSignOut={signOut} />;
 }
 
-function Room({ session, prefs, setPrefs, onLeave }) {
+function Room({ session, prefs, setPrefs, onLeave, auth, roster, onSignOut }) {
   const [allRecords, setRecords] = useState([]);
   // Oda listesinde maç kayıtları + pit kayıtları (kind: 'pit') birlikte durur
-  const records = useMemo(() => allRecords.filter((r) => r.kind !== 'pit'), [allRecords]);
+  const records = useMemo(() => allRecords.filter((r) => r.kind !== 'pit' && r.kind !== 'task'), [allRecords]);
+  // Faz 6: mentör görevleri (oda kayıtlarında kind: 'task')
+  const tasks = useMemo(() => allRecords.filter((r) => r.kind === 'task'), [allRecords]);
   const pitRecords = useMemo(() => allRecords.filter((r) => r.kind === 'pit'), [allRecords]);
   const pitByTeam = useMemo(() => Object.fromEntries(pitRecords.map((r) => [String(r.team?.number), r])), [pitRecords]);
   const [confirming, setConfirming] = useState(false);
@@ -284,7 +318,16 @@ function Room({ session, prefs, setPrefs, onLeave }) {
       return;
     }
     const now = new Date().toISOString();
-    const clean = { ...sanitize(rec), roomId: session.roomId, scouter: rec.scouter || session.scouter, createdAt: rec.createdAt || now, updatedAt: now };
+    const clean = {
+      ...sanitize(rec),
+      roomId: session.roomId,
+      // Düzenlenen eski kayıtta orijinal gözlemci korunur; yeni kayıtta giriş yapan kullanıcı yazılır
+      scouter: isEditing ? rec.scouter || auth.adSoyad : auth.adSoyad,
+      scouterId: isEditing ? rec.scouterId || null : auth.memberId,
+      scouterRole: isEditing ? rec.scouterRole || null : auth.rol,
+      createdAt: rec.createdAt || now,
+      updatedAt: now,
+    };
     const dup = records.find(
       (r) => r.id !== clean.id && String(r.match.teamNumber) === String(clean.match.teamNumber) && String(r.match.matchNumber) === String(clean.match.matchNumber),
     );
@@ -329,6 +372,18 @@ function Room({ session, prefs, setPrefs, onLeave }) {
     const byId = new Map(allRecords.map((r) => [r.id, r]));
     const now = new Date().toISOString();
     for (const raw of list) {
+      if (raw.kind === 'task') {
+        const ex = byId.get(raw.id);
+        if (!raw.id || (ex && (ex.updatedAt || '') >= (raw.updatedAt || ''))) {
+          sum.skipped++;
+          continue;
+        }
+        const { _pending, ...task } = raw;
+        await pushRecord({ ...task, roomId: session.roomId });
+        ex ? sum.updated++ : sum.added++;
+        byId.set(raw.id, raw);
+        continue;
+      }
       const isPit = raw.kind === 'pit';
       const r = isPit ? cleanPit(raw) : migrate(raw);
       delete r._pending;
@@ -376,6 +431,28 @@ function Room({ session, prefs, setPrefs, onLeave }) {
     runSync();
   }
 
+  async function saveTask(t) {
+    await pushRecord({ ...t, roomId: session.roomId, scouter: auth.adSoyad });
+    runSync();
+  }
+  async function deleteTask(t) {
+    await pushRecord({ id: t.id, roomId: session.roomId, deleted: true, updatedAt: new Date().toISOString() });
+    runSync();
+  }
+  const schedule = useMemo(() => {
+    try {
+      const last = JSON.parse(localStorage.getItem('bb2.event.last')) || {};
+      return last.code ? cachedEvent(last.season, last.code) : null;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  const myOpenTasks = useMemo(() => {
+    const ctx = { records, pits: pitRecords, members: roster?.members || [], schedule };
+    return tasks.filter((t) => t.assignee === auth.memberId && !taskProgress(t, ctx).complete).length;
+  }, [tasks, records, pitRecords, roster, schedule, auth]);
+
   /** Veri doğrulama kararı: 'average' veya seçilen kaydın id'si */
   async function resolveConsensus(g, choice) {
     const now = new Date().toISOString();
@@ -399,6 +476,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
   }
 
   async function savePit(p) {
+    p = { ...p, scouter: p.scouterId ? p.scouter : auth.adSoyad, scouterId: p.scouterId || auth.memberId };
     await pushRecord(p);
     flash(`#${p.team.number} pit kaydı kaydedildi ✓`);
     runSync();
@@ -415,8 +493,6 @@ function Room({ session, prefs, setPrefs, onLeave }) {
     }
   }
 
-  const cycleTheme = () =>
-    setPrefs((p) => ({ ...p, theme: THEMES[(THEMES.findIndex((t) => t.id === p.theme) + 1) % THEMES.length].id }));
   const exportRows = records.map(({ _pending, ...r }) => r);
   const hasToken = !!PROXY_URL || !!loadToken();
 
@@ -487,7 +563,9 @@ function Room({ session, prefs, setPrefs, onLeave }) {
             <h1 className="truncate text-base font-extrabold leading-tight sm:text-lg">
               {session.type === 'private' ? '🔒' : '🌐'} {session.roomName}
             </h1>
-            <p className="truncate text-xs text-muted">👤 {session.scouter} · {records.length} kayıt · {stats.length} takım</p>
+            <p className="truncate text-xs text-muted">
+              {auth.rol === 'mentor' ? '🧑‍🏫' : '👤'} {auth.adSoyad} · {records.length} kayıt · {stats.length} takım
+            </p>
           </div>
           <button
             className={`btn min-h-[44px] border-2 px-2 text-xs ${role === 'master' ? 'border-warn bg-warn/15 text-warn' : 'border-line bg-raised'}`}
@@ -502,9 +580,6 @@ function Room({ session, prefs, setPrefs, onLeave }) {
             {role === 'master' ? '🧠 Master' : '📝 Scouter'}
           </button>
           <button className="btn-ghost min-h-[44px] w-11 px-0" onClick={() => setShowPrefs((v) => !v)} title="Ayarlar" aria-label="Ayarlar">⚙</button>
-          <button className="btn-ghost min-h-[44px] w-11 px-0" onClick={cycleTheme} title="Tema (OLED / Koyu / Saha / Açık)">
-            {THEMES.find((t) => t.id === prefs.theme)?.label}
-          </button>
           <button className="btn-ghost min-h-[44px] px-3 text-sm" onClick={onLeave} title="Odadan çık">Çık</button>
         </div>
         <div className="mt-2 flex items-center gap-2">
@@ -519,7 +594,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
         {sync.error && <p className="mt-1 text-xs text-bad">{sync.error}</p>}
       </header>
 
-      {showPrefs && <PrefsPanel prefs={prefs} setPrefs={setPrefs} onClose={() => setShowPrefs(false)} />}
+      {showPrefs && <PrefsPanel prefs={prefs} setPrefs={setPrefs} onClose={() => setShowPrefs(false)} auth={auth} onSignOut={onSignOut} />}
 
       {SHOW_SYNC_SETTINGS && showSettings && (
         <div className="mt-3">
@@ -594,6 +669,24 @@ function Room({ session, prefs, setPrefs, onLeave }) {
           </>
         )}
 
+        {tab === 'tasks' && (
+          <TasksHub
+            auth={auth}
+            roster={roster}
+            tasks={tasks}
+            records={records}
+            pits={pitRecords}
+            groups={consensus.groups}
+            schedule={schedule}
+            session={session}
+            onSaveTask={saveTask}
+            onDeleteTask={deleteTask}
+            onResetAccount={(id) => (resetAccount(id), runSync())}
+            goTo={(t) => (setTab(t), window.scrollTo({ top: 0 }))}
+            flash={flash}
+          />
+        )}
+
         {tab === 'pit' && (
           <PitScouting
             pitRecords={pitRecords}
@@ -639,8 +732,8 @@ function Room({ session, prefs, setPrefs, onLeave }) {
                 </button>
               )}
             </div>
-            <QRTransfer matchRecords={records} pitRecords={pitRecords} scouter={session.scouter} onImport={importScanned} />
-            <TextSync matchRecords={records} pitRecords={pitRecords} session={session} onImport={importScanned} />
+            <QRTransfer matchRecords={[...records, ...tasks]} pitRecords={pitRecords} scouter={session.scouter} onImport={importScanned} />
+            <TextSync matchRecords={[...records, ...tasks]} pitRecords={pitRecords} session={session} onImport={importScanned} />
             {role === 'scouter' && <p className="-mb-2 text-sm font-semibold text-muted">Benim maçlarım</p>}
             <RecordList records={role === 'master' ? records : records.filter((r) => r.scouter === session.scouter)} onEdit={edit} onDelete={remove} filter={filter} setFilter={setFilter} />
           </div>
@@ -731,7 +824,12 @@ function Room({ session, prefs, setPrefs, onLeave }) {
               }}
               className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-bold ${mainOf(tab).id === t.id ? 'bg-accent text-accent-fg' : 'text-muted'}`}
             >
-              <span className="text-2xl leading-none">{t.icon}</span>
+              <span className="relative text-2xl leading-none">
+                {t.icon}
+                {t.id === 'tasks' && myOpenTasks > 0 && (
+                  <span className="absolute -right-3 -top-1 min-w-[18px] rounded-full bg-bad px-1 text-[10px] font-black leading-[18px] text-white">{myOpenTasks}</span>
+                )}
+              </span>
               {t.label}
             </button>
           ))}
@@ -742,7 +840,7 @@ function Room({ session, prefs, setPrefs, onLeave }) {
 }
 
 /* ============================ AYARLAR (Faz 5) ============================ */
-function PrefsPanel({ prefs, setPrefs, onClose }) {
+function PrefsPanel({ prefs, setPrefs, onClose, auth, onSignOut }) {
   const set = (k, v) => setPrefs((p) => ({ ...p, [k]: v }));
   const wakeOk = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
   return (
@@ -751,6 +849,30 @@ function PrefsPanel({ prefs, setPrefs, onClose }) {
         <h2 className="text-lg font-bold">⚙ Saha Ayarları</h2>
         <button className="btn-ghost min-h-[40px] px-3 text-sm" onClick={onClose}>Kapat</button>
       </div>
+      <div className="grid gap-2">
+        <span className="label mb-0">Tema</span>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            ['oled', '🌑 OLED'],
+            ['dark', '🌙 Koyu'],
+            ['field', '⚡ Saha'],
+            ['light', '☀️ Açık'],
+          ].map(([k, l]) => (
+            <button key={k} onClick={() => set('theme', k)} className={`btn min-h-[48px] border-2 px-1 text-xs ${prefs.theme === k ? 'border-accent bg-accent text-accent-fg' : 'border-line bg-raised'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      {auth && (
+        <div className="flex items-center gap-3 rounded-2xl bg-raised p-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-bold">{auth.adSoyad}</div>
+            <div className="text-xs text-muted">{auth.rol === 'mentor' ? 'Mentör' : 'Üye'}{auth.gitHub ? ` · @${auth.gitHub}` : ''} · bu cihazda oturum açık</div>
+          </div>
+          <button className="btn-danger min-h-[44px] px-3 text-sm" onClick={() => confirm('Hesaptan çıkılsın mı? Tekrar girişte PIN gerekir.') && onSignOut()}>Hesaptan Çık</button>
+        </div>
+      )}
       <div className="grid gap-2">
         <span className="label mb-0">Tek elle kullanım (maç ekranındaki + butonları ve İleri)</span>
         <div className="grid grid-cols-2 gap-2">

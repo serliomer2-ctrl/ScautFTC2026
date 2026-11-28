@@ -6,10 +6,10 @@
  * - Başka sitelere giden istekler (GitHub API, FTCScout, Worker) HİÇ önbelleğe alınmaz;
  *   veri senkronizasyonu uygulamanın kendi kuyruğunda yönetilir.
  */
-const SHELL = 'bb-shell-v3';
+const SHELL = 'bb-shell-v4';
 // Modül dosyaları Origin başlığıyla istenir; önbellekteki kopya başlıksız kaydedilmiş olabilir → Vary'yi yok say
 const MATCH = { ignoreVary: true, ignoreSearch: true };
-const STATIC = ['./manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './logo.webp', './field.png'];
+const STATIC = ['./manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './logo.webp', './field.png', './team-members.json'];
 
 const assetsIn = (html) =>
   [...html.matchAll(/(?:src|href)="(\.?\/?assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href);
